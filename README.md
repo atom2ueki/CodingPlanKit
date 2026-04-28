@@ -15,10 +15,19 @@ The package ships **two products**:
 Pick `CodingPlanAuthKit` alone if you only need OAuth. Add `CodingPlanCodex`
 when you also want to call the ChatGPT backend.
 
+**`CodingPlanAuthKit`**
+
 - iOS 17+ / macOS 14+, Swift 6 with strict concurrency
 - OAuth 2.0 + PKCE, Keychain-backed token storage (App Group ready)
 - Pluggable provider registry (Strategy pattern) for adding Anthropic / Google later
-- Buffered + streaming Codex API clients (live `AsyncThrowingStream<String>` deltas)
+- Generic `OAuth2PKCEFlow` engine — a new provider is `OAuthConfig` + a `OAuth2TokenResponseParser`
+
+**`CodingPlanCodex`**
+
+- Buffered Codex chat (`createTextResponse`) and live streaming
+  (`streamTextResponse` returning `AsyncThrowingStream<String>`) via `URLSession.bytes(for:)`
+- Plan-bound usage / rate-limit snapshot (`OpenAICodexUsageClient.fetchRateLimits`)
+- Structured `CodexError` distinguishing HTTP-status failures from SSE-event failures
 
 ## Install
 

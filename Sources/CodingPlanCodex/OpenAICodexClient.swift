@@ -24,20 +24,26 @@ public struct OpenAICodexResponse: Sendable, Equatable {
 /// signed-in user's plan rather than an API key.
 public struct OpenAICodexClient: Sendable {
     private let httpClient: any HTTPClient
+    private let urlSession: URLSession
     private let baseURL: URL
     private let originator: String
 
     /// Create a new client.
     /// - Parameters:
-    ///   - httpClient: HTTP transport. Defaults to ``URLSessionHTTPClient``.
+    ///   - httpClient: Buffered HTTP transport (used by ``createTextResponse(prompt:instructions:model:credentials:)``).
+    ///     Defaults to ``URLSessionHTTPClient``.
+    ///   - urlSession: `URLSession` used by ``streamTextResponse(prompt:instructions:model:credentials:)``
+    ///     for `URLSession.bytes(for:)`. Defaults to `.shared`.
     ///   - baseURL: Backend base URL. Defaults to ``OpenAIBackend/defaultBaseURL``.
     ///   - originator: Originator header. Defaults to ``OpenAIBackend/defaultOriginator``.
     public init(
         httpClient: any HTTPClient = URLSessionHTTPClient(),
+        urlSession: URLSession = .shared,
         baseURL: URL = OpenAIBackend.defaultBaseURL,
         originator: String = OpenAIBackend.defaultOriginator
     ) {
         self.httpClient = httpClient
+        self.urlSession = urlSession
         self.baseURL = baseURL
         self.originator = originator
     }
@@ -125,7 +131,7 @@ public struct OpenAICodexClient: Sendable {
         credentials: Credentials
     ) -> AsyncThrowingStream<String, any Error> {
         AsyncThrowingStream { continuation in
-            let task = Task {
+            let task = Task { [urlSession, baseURL, originator] in
                 do {
                     guard let accountId = credentials.accountId, !accountId.isEmpty else {
                         throw CodexError.missingAccountId
@@ -154,45 +160,48 @@ public struct OpenAICodexClient: Sendable {
                         ],
                     ]
                     let body = try JSONSerialization.data(withJSONObject: requestBody)
-                    let headers = [
-                        "Authorization": "Bearer \(credentials.accessToken)",
-                        "chatgpt-account-id": accountId,
-                        "OpenAI-Beta": "responses=experimental",
-                        "originator": originator,
-                        "Content-Type": "application/json",
-                        "Accept": "text/event-stream",
-                    ]
+                    var urlRequest = URLRequest(url: url)
+                    urlRequest.httpMethod = "POST"
+                    urlRequest.httpBody = body
+                    urlRequest.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
+                    urlRequest.setValue(accountId, forHTTPHeaderField: "chatgpt-account-id")
+                    urlRequest.setValue("responses=experimental", forHTTPHeaderField: "OpenAI-Beta")
+                    urlRequest.setValue(originator, forHTTPHeaderField: "originator")
+                    urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    urlRequest.setValue("text/event-stream", forHTTPHeaderField: "Accept")
 
-                    let streaming = try await httpClient.sendStreaming(HTTPRequest(
-                        url: url,
-                        method: .post,
-                        headers: headers,
-                        body: body
-                    ))
+                    let (bytes, response) = try await urlSession.bytes(for: urlRequest)
+                    guard let http = response as? HTTPURLResponse else {
+                        throw CodexError.invalidResponse
+                    }
 
-                    guard streaming.isSuccess else {
+                    guard (200..<300).contains(http.statusCode) else {
                         var errorBuffer = Data()
-                        for try await chunk in streaming.body { errorBuffer.append(chunk) }
+                        for try await byte in bytes { errorBuffer.append(byte) }
                         let message = Self.backendErrorMessage(from: errorBuffer)
                         throw CodexError.backendError(
-                            statusCode: streaming.statusCode,
+                            statusCode: http.statusCode,
                             message: message
                         )
                     }
 
-                    var pending = ""
-                    for try await chunk in streaming.body {
-                        guard let text = String(data: chunk, encoding: .utf8) else { continue }
-                        pending.append(text)
-                        while let separator = Self.firstEventBoundary(in: pending) {
-                            let event = String(pending[..<separator.lowerBound])
-                            pending.removeSubrange(..<separator.upperBound)
-                            if let delta = Self.delta(from: event) {
+                    // SSE events are separated by blank lines. Accumulate
+                    // each event's `data:` lines, then decode at the boundary.
+                    var current: [String] = []
+                    for try await line in bytes.lines {
+                        if line.isEmpty {
+                            if let delta = Self.delta(fromDataLines: current) {
                                 continuation.yield(delta)
                             }
+                            current.removeAll(keepingCapacity: true)
+                        } else if line.hasPrefix("data:") {
+                            current.append(
+                                String(line.dropFirst("data:".count))
+                                    .trimmingCharacters(in: .whitespaces)
+                            )
                         }
                     }
-                    if !pending.isEmpty, let delta = Self.delta(from: pending) {
+                    if !current.isEmpty, let delta = Self.delta(fromDataLines: current) {
                         continuation.yield(delta)
                     }
                     continuation.finish()
@@ -204,23 +213,9 @@ public struct OpenAICodexClient: Sendable {
         }
     }
 
-    private static func firstEventBoundary(in buffer: String) -> Range<String.Index>? {
-        if let r = buffer.range(of: "\n\n") { return r }
-        if let r = buffer.range(of: "\r\n\r\n") { return r }
-        return nil
-    }
-
-    private static func delta(from event: String) -> String? {
-        let dataLines: [String] = event
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .compactMap { line -> String? in
-                guard line.hasPrefix("data:") else { return nil }
-                return String(line.dropFirst("data:".count))
-                    .trimmingCharacters(in: .whitespaces)
-            }
-        guard !dataLines.isEmpty else { return nil }
-        let payload = dataLines.joined(separator: "\n")
+    private static func delta(fromDataLines lines: [String]) -> String? {
+        guard !lines.isEmpty else { return nil }
+        let payload = lines.joined(separator: "\n")
         guard let payloadData = payload.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any],
               let type = json["type"] as? String,

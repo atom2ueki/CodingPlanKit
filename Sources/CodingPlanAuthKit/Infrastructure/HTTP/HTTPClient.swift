@@ -48,41 +48,14 @@ public struct HTTPResponse: Sendable {
     }
 }
 
-/// A streaming response: status + headers eagerly available, body as a
-/// chunked async sequence.
-public struct HTTPStreamingResponse: Sendable {
-    public let statusCode: Int
-    public let headers: [String: String]
-    public let body: AsyncThrowingStream<Data, any Error>
-
-    public var isSuccess: Bool { (200..<300).contains(statusCode) }
-
-    public init(
-        statusCode: Int,
-        headers: [String: String] = [:],
-        body: AsyncThrowingStream<Data, any Error>
-    ) {
-        self.statusCode = statusCode
-        self.headers = headers
-        self.body = body
-    }
-}
-
-/// An abstraction over HTTP networking for testability.
+/// Buffered HTTP transport used by the auth flow.
+///
+/// The auth flow only needs whole-response semantics (token endpoints
+/// return small JSON payloads). Consumers that need streaming should
+/// use `URLSession.bytes(for:)` directly.
 public protocol HTTPClient: Sendable {
     /// Perform an HTTP request and return the buffered response.
     func send(_ request: HTTPRequest) async throws -> HTTPResponse
-
-    /// Perform an HTTP request and return a streaming response.
-    /// Default implementation throws — only transports backed by
-    /// `URLSession.bytes(for:)` (or equivalent) need to override this.
-    func sendStreaming(_ request: HTTPRequest) async throws -> HTTPStreamingResponse
-}
-
-public extension HTTPClient {
-    func sendStreaming(_ request: HTTPRequest) async throws -> HTTPStreamingResponse {
-        throw AuthError.networkError("This HTTPClient does not support streaming.")
-    }
 }
 
 /// A concrete ``HTTPClient`` backed by `URLSession`.
@@ -94,69 +67,24 @@ public struct URLSessionHTTPClient: HTTPClient {
     }
 
     public func send(_ request: HTTPRequest) async throws -> HTTPResponse {
-        let urlRequest = Self.makeURLRequest(from: request)
-        let (data, response) = try await session.data(for: urlRequest)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw AuthError.invalidResponse
-        }
-        return HTTPResponse(
-            statusCode: httpResponse.statusCode,
-            headers: Self.headers(from: httpResponse),
-            body: data
-        )
-    }
-
-    public func sendStreaming(_ request: HTTPRequest) async throws -> HTTPStreamingResponse {
-        let urlRequest = Self.makeURLRequest(from: request)
-        let (bytes, response) = try await session.bytes(for: urlRequest)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw AuthError.invalidResponse
-        }
-
-        let stream = AsyncThrowingStream<Data, any Error> { continuation in
-            let task = Task {
-                do {
-                    var buffer = Data()
-                    for try await byte in bytes {
-                        buffer.append(byte)
-                        if buffer.count >= 1024 {
-                            continuation.yield(buffer)
-                            buffer.removeAll(keepingCapacity: true)
-                        }
-                    }
-                    if !buffer.isEmpty { continuation.yield(buffer) }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
-                }
-            }
-            continuation.onTermination = { _ in task.cancel() }
-        }
-
-        return HTTPStreamingResponse(
-            statusCode: httpResponse.statusCode,
-            headers: Self.headers(from: httpResponse),
-            body: stream
-        )
-    }
-
-    private static func makeURLRequest(from request: HTTPRequest) -> URLRequest {
         var urlRequest = URLRequest(url: request.url)
         urlRequest.httpMethod = request.method.rawValue
         urlRequest.httpBody = request.body
         for (key, value) in request.headers {
             urlRequest.setValue(value, forHTTPHeaderField: key)
         }
-        return urlRequest
-    }
 
-    private static func headers(from response: HTTPURLResponse) -> [String: String] {
+        let (data, response) = try await session.data(for: urlRequest)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw AuthError.invalidResponse
+        }
+
         var headers: [String: String] = [:]
-        for (key, value) in response.allHeaderFields {
+        for (key, value) in httpResponse.allHeaderFields {
             if let k = key as? String, let v = value as? String {
                 headers[k] = v
             }
         }
-        return headers
+        return HTTPResponse(statusCode: httpResponse.statusCode, headers: headers, body: data)
     }
 }
