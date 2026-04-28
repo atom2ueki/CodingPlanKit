@@ -3,7 +3,7 @@ import Foundation
 
 struct RecordedHTTPRequest: Sendable, Equatable {
     let url: URL
-    let method: String
+    let method: HTTPMethod
     let headers: [String: String]
     let body: Data?
 }
@@ -21,23 +21,17 @@ actor MockHTTPClient: HTTPClient {
         requests
     }
 
-    func request(
-        url: URL,
-        method: String,
-        headers: [String: String],
-        body: Data?
-    ) async throws -> (data: Data, response: HTTPURLResponse) {
-        requestedURLs.append(url)
-        requests.append(RecordedHTTPRequest(url: url, method: method, headers: headers, body: body))
-        guard let stub = responses[url] else {
-            throw AuthError.networkError("No stub for \(url)")
+    func send(_ request: HTTPRequest) async throws -> HTTPResponse {
+        requestedURLs.append(request.url)
+        requests.append(RecordedHTTPRequest(
+            url: request.url,
+            method: request.method,
+            headers: request.headers,
+            body: request.body
+        ))
+        guard let stub = responses[request.url] else {
+            throw AuthError.networkError("No stub for \(request.url)")
         }
-        let response = HTTPURLResponse(
-            url: url,
-            statusCode: stub.statusCode,
-            httpVersion: nil,
-            headerFields: nil
-        )!
-        return (stub.data, response)
+        return HTTPResponse(statusCode: stub.statusCode, body: stub.data)
     }
 }

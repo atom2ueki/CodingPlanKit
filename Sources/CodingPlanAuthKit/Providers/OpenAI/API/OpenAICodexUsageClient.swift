@@ -121,24 +121,23 @@ public struct OpenAICodexUsageClient: Sendable {
         }
 
         let url = baseURL.appendingPathComponent("wham/usage")
-        let (data, response) = try await httpClient.request(
+        let response = try await httpClient.send(HTTPRequest(
             url: url,
-            method: "GET",
+            method: .get,
             headers: [
                 "Authorization": "Bearer \(credentials.accessToken)",
                 "ChatGPT-Account-Id": accountId,
                 "originator": originator,
                 "Accept": "application/json",
-            ],
-            body: nil
-        )
+            ]
+        ))
 
-        guard (200..<300).contains(response.statusCode) else {
-            let message = String(data: data, encoding: .utf8) ?? "Unknown error"
+        guard response.isSuccess else {
+            let message = String(data: response.body, encoding: .utf8) ?? "Unknown error"
             throw AuthError.serverError("Usage backend returned \(response.statusCode): \(message)")
         }
 
-        let payload = try JSONDecoder().decode(RateLimitStatusPayload.self, from: data)
+        let payload = try JSONDecoder().decode(RateLimitStatusPayload.self, from: response.body)
         let snapshots = Self.rateLimitSnapshots(from: payload)
         guard let selected = snapshots.first(where: { $0.limitId == "codex" }) ?? snapshots.first else {
             throw AuthError.invalidResponse

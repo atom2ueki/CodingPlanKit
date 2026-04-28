@@ -78,7 +78,7 @@ struct OpenAICodexUsageClientTests {
         let requests = await httpClient.recordedRequests()
         let request = try #require(requests.first)
         #expect(request.url == endpoint)
-        #expect(request.method == "GET")
+        #expect(request.method == .get)
         #expect(request.body == nil)
         #expect(request.headers["Authorization"] == "Bearer access-token")
         #expect(request.headers["ChatGPT-Account-Id"] == "account-123")

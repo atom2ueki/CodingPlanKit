@@ -13,15 +13,28 @@ import Security
 ///
 /// The default `servicePrefix` is the host app's bundle identifier. Pass an
 /// explicit prefix when the kit is used in a context without a usable bundle
-/// id (unit tests, command-line tools, app extensions sharing a Keychain
-/// access group, etc.).
+/// id (unit tests, command-line tools, etc.).
+///
+/// To share credentials with widget or other app extensions, configure a
+/// shared Keychain Access Group in your entitlements and pass it as
+/// ``accessGroup`` on every instance:
+///
+/// ```swift
+/// let storage = KeychainTokenStorage(accessGroup: "TEAMID.com.example.shared")
+/// ```
 public actor KeychainTokenStorage: TokenStorage {
     public let servicePrefix: String
 
-    public init(servicePrefix: String? = nil) {
+    /// Optional `kSecAttrAccessGroup` value, e.g. `"TEAMID.com.example.shared"`.
+    /// When set, credentials are stored in the shared Keychain Access Group so
+    /// app extensions with the same entitlement can read them.
+    public let accessGroup: String?
+
+    public init(servicePrefix: String? = nil, accessGroup: String? = nil) {
         self.servicePrefix = servicePrefix
             ?? Bundle.main.bundleIdentifier
             ?? "com.codingplan.auth"
+        self.accessGroup = accessGroup
     }
 
     public func save(credentials: Credentials, for providerId: String) async throws {
@@ -79,10 +92,14 @@ public actor KeychainTokenStorage: TokenStorage {
     // MARK: - Private
 
     private func baseQuery(for providerId: String) -> [String: Any] {
-        [
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: "\(servicePrefix).\(providerId)",
             kSecAttrAccount as String: providerId,
         ]
+        if let accessGroup {
+            query[kSecAttrAccessGroup as String] = accessGroup
+        }
+        return query
     }
 }

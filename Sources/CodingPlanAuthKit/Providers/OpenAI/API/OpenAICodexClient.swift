@@ -94,19 +94,139 @@ public struct OpenAICodexClient: Sendable {
             "Accept": "text/event-stream",
         ]
 
-        let (data, response) = try await httpClient.request(
+        let response = try await httpClient.send(HTTPRequest(
             url: url,
-            method: "POST",
+            method: .post,
             headers: headers,
             body: body
-        )
+        ))
 
-        guard (200..<300).contains(response.statusCode) else {
-            let message = Self.backendErrorMessage(from: data)
+        guard response.isSuccess else {
+            let message = Self.backendErrorMessage(from: response.body)
             throw AuthError.serverError("Codex backend returned \(response.statusCode): \(message)")
         }
 
-        return try Self.parseResponse(from: data)
+        return try Self.parseResponse(from: response.body)
+    }
+
+    /// Send a single prompt and stream the model's text deltas as they arrive.
+    ///
+    /// Each yielded `String` is one `response.output_text.delta` chunk from
+    /// the backend's SSE stream — concatenate them to reconstruct the full
+    /// reply. Throws on backend errors or non-2xx status codes.
+    ///
+    /// Cancelling the consuming `for try await` loop cancels the underlying
+    /// HTTP task.
+    public func streamTextResponse(
+        prompt: String,
+        instructions: String = "You are Codex, an AI coding assistant. Follow the user's request and respond concisely.",
+        model: String = "gpt-5.5",
+        credentials: Credentials
+    ) -> AsyncThrowingStream<String, any Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    guard let accountId = credentials.accountId, !accountId.isEmpty else {
+                        throw AuthError.notAuthenticated
+                    }
+
+                    let url = baseURL.appendingPathComponent("codex/responses")
+                    let requestBody: [String: Any] = [
+                        "model": model,
+                        "instructions": instructions,
+                        "tools": [],
+                        "tool_choice": "auto",
+                        "parallel_tool_calls": false,
+                        "store": false,
+                        "stream": true,
+                        "include": [],
+                        "input": [
+                            [
+                                "role": "user",
+                                "content": [
+                                    [
+                                        "type": "input_text",
+                                        "text": prompt,
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ]
+                    let body = try JSONSerialization.data(withJSONObject: requestBody)
+                    let headers = [
+                        "Authorization": "Bearer \(credentials.accessToken)",
+                        "chatgpt-account-id": accountId,
+                        "OpenAI-Beta": "responses=experimental",
+                        "originator": originator,
+                        "Content-Type": "application/json",
+                        "Accept": "text/event-stream",
+                    ]
+
+                    let streaming = try await httpClient.sendStreaming(HTTPRequest(
+                        url: url,
+                        method: .post,
+                        headers: headers,
+                        body: body
+                    ))
+
+                    guard streaming.isSuccess else {
+                        var errorBuffer = Data()
+                        for try await chunk in streaming.body { errorBuffer.append(chunk) }
+                        let message = Self.backendErrorMessage(from: errorBuffer)
+                        throw AuthError.serverError(
+                            "Codex backend returned \(streaming.statusCode): \(message)"
+                        )
+                    }
+
+                    var pending = ""
+                    for try await chunk in streaming.body {
+                        guard let text = String(data: chunk, encoding: .utf8) else { continue }
+                        pending.append(text)
+                        while let separator = Self.firstEventBoundary(in: pending) {
+                            let event = String(pending[..<separator.lowerBound])
+                            pending.removeSubrange(..<separator.upperBound)
+                            if let delta = Self.delta(from: event) {
+                                continuation.yield(delta)
+                            }
+                        }
+                    }
+                    if !pending.isEmpty, let delta = Self.delta(from: pending) {
+                        continuation.yield(delta)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    private static func firstEventBoundary(in buffer: String) -> Range<String.Index>? {
+        if let r = buffer.range(of: "\n\n") { return r }
+        if let r = buffer.range(of: "\r\n\r\n") { return r }
+        return nil
+    }
+
+    private static func delta(from event: String) -> String? {
+        let dataLines: [String] = event
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .compactMap { line -> String? in
+                guard line.hasPrefix("data:") else { return nil }
+                return String(line.dropFirst("data:".count))
+                    .trimmingCharacters(in: .whitespaces)
+            }
+        guard !dataLines.isEmpty else { return nil }
+        let payload = dataLines.joined(separator: "\n")
+        guard let payloadData = payload.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any],
+              let type = json["type"] as? String,
+              type == "response.output_text.delta",
+              let chunk = json["delta"] as? String else {
+            return nil
+        }
+        return chunk
     }
 
     private static func outputText(from json: [String: Any]) -> String? {

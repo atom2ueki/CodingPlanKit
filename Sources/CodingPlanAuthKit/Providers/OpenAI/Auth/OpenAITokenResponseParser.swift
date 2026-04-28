@@ -1,14 +1,17 @@
 // OpenAITokenResponseParser.swift
 // CodingPlanAuthKit
 //
-// Parses OpenAI's OAuth token responses into ``Credentials``, including
-// extraction of `chatgpt_account_id`, `chatgpt_plan_type`, and the user's
-// email from JWT claims embedded in the access and id tokens.
+// OpenAI's flavor of ``OAuth2TokenResponseParser``: decodes the standard
+// token-endpoint JSON and pulls `chatgpt_account_id`, `chatgpt_plan_type`,
+// and the user's email out of the access / id token JWT claims.
 
 import Foundation
 
-enum OpenAITokenResponseParser {
-    static func parse(_ data: Data, fallbackRefreshToken: String? = nil) throws -> Credentials {
+/// ``OAuth2TokenResponseParser`` for OpenAI / ChatGPT.
+public struct OpenAITokenResponseParser: OAuth2TokenResponseParser {
+    public init() {}
+
+    public func parse(_ data: Data, fallbackRefreshToken: String?) throws -> Credentials {
         struct TokenResponse: Decodable {
             let access_token: String
             let refresh_token: String?
@@ -18,25 +21,25 @@ enum OpenAITokenResponseParser {
         }
 
         let decoded = try JSONDecoder().decode(TokenResponse.self, from: data)
-        let expiresAt = expirationDate(
+        let expiresAt = Self.expirationDate(
             expiresIn: decoded.expires_in,
             accessToken: decoded.access_token,
             idToken: decoded.id_token
         )
 
-        let accessPayload = jwtPayload(from: decoded.access_token)
-        let idPayload = decoded.id_token.flatMap { jwtPayload(from: $0) }
+        let accessPayload = Self.jwtPayload(from: decoded.access_token)
+        let idPayload = decoded.id_token.flatMap { Self.jwtPayload(from: $0) }
         let payloads = [accessPayload, idPayload]
-        let accountId = authClaim("chatgpt_account_id", in: payloads)
-        let accountPlanType = authClaim("chatgpt_plan_type", in: payloads)
-        let accountEmail = email(in: payloads)
+        let accountId = Self.authClaim("chatgpt_account_id", in: payloads)
+        let accountPlanType = Self.authClaim("chatgpt_plan_type", in: payloads)
+        let accountEmail = Self.email(in: payloads)
 
         return Credentials(
             accessToken: decoded.access_token,
             refreshToken: decoded.refresh_token ?? fallbackRefreshToken,
             idToken: decoded.id_token,
             expiresAt: expiresAt,
-            tokenType: decoded.token_type ?? "Bearer",
+            tokenType: decoded.token_type.map(TokenType.init(rawValue:)) ?? .bearer,
             accountId: accountId,
             accountEmail: accountEmail,
             accountPlanType: accountPlanType
@@ -58,7 +61,6 @@ enum OpenAITokenResponseParser {
         if let expiresIn {
             return Date().addingTimeInterval(TimeInterval(expiresIn))
         }
-
         let payloads = [
             jwtPayload(from: accessToken),
             idToken.flatMap { jwtPayload(from: $0) },

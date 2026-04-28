@@ -41,7 +41,7 @@ struct OpenAICodexClientTests {
         let requests = await httpClient.recordedRequests()
         let request = try #require(requests.first)
         #expect(request.url == endpoint)
-        #expect(request.method == "POST")
+        #expect(request.method == .post)
         #expect(request.headers["Authorization"] == "Bearer access-token")
         #expect(request.headers["chatgpt-account-id"] == "account-123")
         #expect(request.headers["OpenAI-Beta"] == "responses=experimental")

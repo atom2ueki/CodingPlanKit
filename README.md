@@ -86,42 +86,71 @@ Sources/CodingPlanAuthKit/
 │   ├── AuthProvider.swift          ← protocol every provider implements
 │   ├── TokenStorage.swift          ← protocol for credential persistence
 │   ├── Credentials.swift           ← OAuth tokens + plan/account metadata
+│   ├── TokenType.swift             ← typed Bearer / extensible scheme
 │   └── AuthError.swift             ← typed errors (LocalizedError)
 │
 ├── Application/                Use cases / orchestration
-│   └── AuthService.swift           ← actor; registers providers, refreshes tokens
+│   └── AuthService.swift           ← actor; provider registry + refresh
 │
 ├── Presentation/               UI integration (SwiftUI / AppKit / UIKit)
 │   ├── AuthState.swift             ← @Observable view-model glue
 │   └── BrowserAuthSession.swift    ← ASWebAuthenticationSession wrapper
 │
 ├── Infrastructure/             Generic adapters (the "driven" side)
-│   ├── HTTP/HTTPClient.swift       ← URLSession HTTP transport
+│   ├── HTTP/HTTPClient.swift       ← typed HTTP client + streaming
 │   ├── OAuth/OAuthConfig.swift     ← provider-agnostic OAuth config
 │   ├── OAuth/PKCE.swift            ← S256 PKCE generator
-│   ├── Server/LocalCallbackServer.swift  ← localhost OAuth redirect server
-│   └── Storage/KeychainTokenStorage.swift ← Keychain-backed TokenStorage
+│   ├── OAuth/OAuth2PKCEFlow.swift  ← reusable OAuth2 + PKCE engine
+│   ├── OAuth/OAuth2LoginSession.swift
+│   ├── OAuth/OAuth2TokenResponseParser.swift
+│   ├── OAuth/OAuth2Helpers.swift
+│   ├── Server/LocalCallbackServer.swift  ← localhost redirect server
+│   └── Storage/KeychainTokenStorage.swift ← Keychain (with App-Group support)
 │
 └── Providers/                  Provider-specific adapters (the "driving" side)
     └── OpenAI/
-        ├── Auth/                   ← OAuth handshake + JWT claim parsing
-        │   ├── OpenAIAuthProvider.swift
-        │   ├── OpenAILoginSession.swift
+        ├── Auth/                   ← OpenAI-specific config + JWT parser
+        │   ├── OpenAIAuthProvider.swift     (~50 LOC; wraps OAuth2PKCEFlow)
         │   ├── OpenAIOAuthConfig.swift
         │   └── OpenAITokenResponseParser.swift
         └── API/                    ← Plan-bound API clients
-            ├── OpenAICodexClient.swift
+            ├── OpenAIBackend.swift
+            ├── OpenAICodexClient.swift  (buffered + streaming)
             └── OpenAICodexUsageClient.swift
 ```
 
 ### Adding a new provider
 
-1. Create `Providers/<Name>/Auth/<Name>AuthProvider.swift` conforming to
-   `AuthProvider`.
-2. Reuse `OAuthConfig`, `PKCE`, `LocalCallbackServer`, and `HTTPClient` from
-   `Infrastructure/`.
-3. Optionally add `Providers/<Name>/API/` clients that consume `Credentials`.
-4. Register it: `await service.register(MyProvider())`.
+The generic `OAuth2PKCEFlow` engine handles PKCE, the local callback server,
+the authorization URL, the auth-code exchange, and refresh — so a new
+provider is essentially **a config + a token-response parser**:
+
+```swift
+public struct AnthropicTokenResponseParser: OAuth2TokenResponseParser { … }
+
+public actor AnthropicAuthProvider: AuthProvider {
+    public let id = "anthropic"
+    public let name = "Anthropic"
+    private let flow: OAuth2PKCEFlow
+
+    public init(callbackScheme: String? = nil) {
+        self.flow = OAuth2PKCEFlow(
+            providerId: "anthropic",
+            config: AnthropicOAuthConfig.default(),
+            parser: AnthropicTokenResponseParser(),
+            callbackScheme: callbackScheme
+        )
+    }
+
+    public func beginLogin() async throws -> any LoginSession {
+        try await flow.beginLogin()
+    }
+
+    public func refresh(credentials: Credentials) async throws -> Credentials {
+        try await flow.refresh(credentials: credentials)
+    }
+}
+```
 
 ## Testing
 

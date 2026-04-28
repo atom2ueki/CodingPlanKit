@@ -17,8 +17,8 @@ public struct Credentials: Codable, Sendable, Equatable {
     /// Wall-clock instant after which ``accessToken`` is no longer valid.
     public let expiresAt: Date?
 
-    /// Token scheme; almost always `"Bearer"`.
-    public let tokenType: String
+    /// Token scheme; almost always ``TokenType/bearer``.
+    public let tokenType: TokenType
 
     /// Provider-side account identifier extracted from JWT claims (e.g. `chatgpt_account_id`).
     public let accountId: String?
@@ -34,7 +34,7 @@ public struct Credentials: Codable, Sendable, Equatable {
         refreshToken: String? = nil,
         idToken: String? = nil,
         expiresAt: Date? = nil,
-        tokenType: String = "Bearer",
+        tokenType: TokenType = .bearer,
         accountId: String? = nil,
         accountEmail: String? = nil,
         accountPlanType: String? = nil

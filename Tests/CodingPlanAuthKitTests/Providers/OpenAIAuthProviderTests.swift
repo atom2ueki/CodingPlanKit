@@ -5,7 +5,7 @@ import Testing
 struct OpenAIAuthProviderTests {
     @Test
     func authorizationURLUsesCodexRedirectAndParameters() throws {
-        let url = try OpenAIAuthProvider.authorizationURL(
+        let url = try OAuth2PKCEFlow.authorizationURL(
             config: OpenAIOAuthConfig.default(),
             redirectURI: "http://localhost:1455/auth/callback",
             state: "state-123",
@@ -112,7 +112,7 @@ struct OpenAIAuthProviderTests {
             "access_token": accessToken,
         ])
 
-        let creds = try OpenAIAuthProvider.parseTokenResponse(tokenJSON)
+        let creds = try OpenAITokenResponseParser().parse(tokenJSON, fallbackRefreshToken: nil)
 
         let parsedExpiry = try #require(creds.expiresAt)
         #expect(abs(parsedExpiry.timeIntervalSince1970 - expiresAt.timeIntervalSince1970) < 1)
@@ -169,7 +169,7 @@ struct OpenAIAuthProviderTests {
             "expires_in": 3600,
         ])
 
-        let creds = try OpenAIAuthProvider.parseTokenResponse(tokenJSON)
+        let creds = try OpenAITokenResponseParser().parse(tokenJSON, fallbackRefreshToken: nil)
         #expect(creds.accessToken == accessToken)
         #expect(creds.idToken == idToken)
         #expect(creds.accountId == "acc-42")

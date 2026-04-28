@@ -1,13 +1,13 @@
-// OpenAILoginSession.swift
+// OAuth2LoginSession.swift
 // CodingPlanAuthKit
 //
-// Ephemeral state for one in-flight OpenAI OAuth handshake. Holds the PKCE
-// verifier, expected `state`, the local callback server, and exchanges the
+// A reusable ``LoginSession`` produced by ``OAuth2PKCEFlow``. Holds the
+// ephemeral state for one in-flight handshake and exchanges the
 // authorization code for credentials when the browser callback returns.
 
 import Foundation
 
-actor OpenAILoginSession: LoginSession {
+actor OAuth2LoginSession: LoginSession {
     nonisolated let providerId: String
     nonisolated let authURL: URL
     private let state: String
@@ -18,6 +18,7 @@ actor OpenAILoginSession: LoginSession {
     private let clientId: String
     private let tokenEndpoint: URL
     private let httpClient: any HTTPClient
+    private let parser: any OAuth2TokenResponseParser
 
     init(
         providerId: String,
@@ -29,7 +30,8 @@ actor OpenAILoginSession: LoginSession {
         server: LocalCallbackServer,
         clientId: String,
         tokenEndpoint: URL,
-        httpClient: any HTTPClient
+        httpClient: any HTTPClient,
+        parser: any OAuth2TokenResponseParser
     ) {
         self.providerId = providerId
         self.authURL = authURL
@@ -41,6 +43,7 @@ actor OpenAILoginSession: LoginSession {
         self.clientId = clientId
         self.tokenEndpoint = tokenEndpoint
         self.httpClient = httpClient
+        self.parser = parser
     }
 
     func complete(with callbackURL: URL) async throws -> Credentials {
@@ -67,19 +70,19 @@ actor OpenAILoginSession: LoginSession {
             "code_verifier": pkceVerifier,
         ])
 
-        let (data, response) = try await httpClient.request(
+        let response = try await httpClient.send(HTTPRequest(
             url: tokenEndpoint,
-            method: "POST",
+            method: .post,
             headers: ["Content-Type": "application/x-www-form-urlencoded"],
             body: Data(body.utf8)
-        )
+        ))
 
-        guard (200..<300).contains(response.statusCode) else {
-            let message = String(data: data, encoding: .utf8) ?? "Unknown error"
+        guard response.isSuccess else {
+            let message = String(data: response.body, encoding: .utf8) ?? "Unknown error"
             throw AuthError.tokenExchangeFailed(message)
         }
 
-        return try OpenAITokenResponseParser.parse(data)
+        return try parser.parse(response.body, fallbackRefreshToken: nil)
     }
 
     func cancel() async {
