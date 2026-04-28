@@ -79,7 +79,7 @@ actor OAuth2LoginSession: LoginSession {
 
         guard response.isSuccess else {
             let message = String(data: response.body, encoding: .utf8) ?? "Unknown error"
-            throw AuthError.tokenExchangeFailed(message)
+            throw AuthError.tokenExchangeFailed(statusCode: response.statusCode, message: message)
         }
 
         return try parser.parse(response.body, fallbackRefreshToken: nil)

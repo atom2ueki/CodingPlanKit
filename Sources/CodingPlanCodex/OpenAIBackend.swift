@@ -1,5 +1,5 @@
 // OpenAIBackend.swift
-// CodingPlanAuthKit
+// CodingPlanCodex
 //
 // Shared base URL and originator constants for the ChatGPT backend used by
 // the plan-bound OpenAI API clients (Codex, usage, etc.).

@@ -119,7 +119,7 @@ public actor OAuth2PKCEFlow {
     /// Exchange a refresh token for a fresh credentials triple.
     public func refresh(credentials: Credentials) async throws -> Credentials {
         guard let refreshToken = credentials.refreshToken else {
-            throw AuthError.tokenExchangeFailed("No refresh token available")
+            throw AuthError.tokenExchangeFailed(statusCode: nil, message: "No refresh token available")
         }
 
         let params: [String: String] = [
@@ -157,7 +157,7 @@ public actor OAuth2PKCEFlow {
         let response = try await httpClient.send(request)
         guard response.isSuccess else {
             let message = String(data: response.body, encoding: .utf8) ?? "Unknown error"
-            throw AuthError.tokenExchangeFailed(message)
+            throw AuthError.tokenExchangeFailed(statusCode: response.statusCode, message: message)
         }
 
         let refreshed = try parser.parse(response.body, fallbackRefreshToken: refreshToken)

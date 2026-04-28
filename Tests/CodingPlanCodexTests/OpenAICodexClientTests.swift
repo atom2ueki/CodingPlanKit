@@ -1,6 +1,7 @@
 import Foundation
 import Testing
-@testable import CodingPlanAuthKit
+import CodingPlanAuthKit
+@testable import CodingPlanCodex
 
 struct OpenAICodexClientTests {
     @Test

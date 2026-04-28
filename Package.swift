@@ -12,6 +12,10 @@ let package = Package(
             name: "CodingPlanAuthKit",
             targets: ["CodingPlanAuthKit"]
         ),
+        .library(
+            name: "CodingPlanCodex",
+            targets: ["CodingPlanCodex"]
+        ),
     ],
     dependencies: [
         .package(url: "https://github.com/atom2ueki/SwiftWebServer.git", from: "0.1.0"),
@@ -27,9 +31,21 @@ let package = Package(
                 .enableUpcomingFeature("InferIsolatedConformances"),
             ]
         ),
+        .target(
+            name: "CodingPlanCodex",
+            dependencies: ["CodingPlanAuthKit"],
+            swiftSettings: [
+                .enableUpcomingFeature("ExistentialAny"),
+                .enableUpcomingFeature("InferIsolatedConformances"),
+            ]
+        ),
         .testTarget(
             name: "CodingPlanAuthKitTests",
             dependencies: ["CodingPlanAuthKit"]
+        ),
+        .testTarget(
+            name: "CodingPlanCodexTests",
+            dependencies: ["CodingPlanCodex", "CodingPlanAuthKit"]
         ),
     ],
     swiftLanguageModes: [.v6]

@@ -7,8 +7,7 @@ import Foundation
 public enum AuthError: Error, Sendable, Equatable {
     case invalidURL
     case invalidResponse
-    case serverError(String)
-    case tokenExchangeFailed(String)
+    case tokenExchangeFailed(statusCode: Int?, message: String)
     case invalidState
     case missingAuthorizationCode
     case cancelled
@@ -27,8 +26,12 @@ extension AuthError: LocalizedError {
         switch self {
         case .invalidURL: "The OAuth URL was malformed."
         case .invalidResponse: "The server returned an invalid response."
-        case .serverError(let message): "Server error: \(message)"
-        case .tokenExchangeFailed(let message): "Token exchange failed: \(message)"
+        case .tokenExchangeFailed(let status, let message):
+            if let status {
+                "Token exchange failed (\(status)): \(message)"
+            } else {
+                "Token exchange failed: \(message)"
+            }
         case .invalidState: "OAuth state did not match — possible CSRF."
         case .missingAuthorizationCode: "The callback URL did not include an authorization code."
         case .cancelled: "Authentication was cancelled."

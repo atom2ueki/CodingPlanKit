@@ -1,6 +1,7 @@
 import Foundation
 import Testing
-@testable import CodingPlanAuthKit
+import CodingPlanAuthKit
+@testable import CodingPlanCodex
 
 struct OpenAICodexUsageClientTests {
     @Test
@@ -89,7 +90,7 @@ struct OpenAICodexUsageClientTests {
     @Test
     func fetchRateLimitsRequiresAccountId() async throws {
         let client = OpenAICodexUsageClient()
-        await #expect(throws: AuthError.notAuthenticated) {
+        await #expect(throws: CodexError.missingAccountId) {
             _ = try await client.fetchRateLimits(credentials: Credentials(accessToken: "access-token"))
         }
     }

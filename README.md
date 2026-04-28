@@ -1,16 +1,24 @@
 # CodingPlanAuthKit
 
-Sign in to AI coding-plan accounts (OpenAI Codex / ChatGPT today, more
-providers tomorrow) from your iOS or macOS app, and reuse the resulting
-plan-bound credentials to call the provider's APIs.
+OAuth 2.0 + PKCE for AI coding-plan accounts (OpenAI Codex / ChatGPT today,
+more providers next) on iOS 17+ / macOS 14+. Sign users into their existing
+plan, persist credentials in the Keychain, and let your app inherit their
+quota — no API keys, no per-token billing.
 
-> Bring-your-own-account: users sign in with their existing Codex / ChatGPT
-> plan, and your app inherits their quota. No API keys, no per-token billing.
+The package ships **two products**:
 
-- iOS 17+ / macOS 14+
-- Swift 6, strict concurrency
-- OAuth 2.0 + PKCE, tokens stored in the system Keychain
-- Pure-Swift, dependency-light (uses [SwiftWebServer](https://github.com/) for the localhost callback)
+| Product | Purpose | Depends on |
+|---|---|---|
+| `CodingPlanAuthKit` | OAuth + token storage. Pure auth. | `SwiftWebServer` |
+| `CodingPlanCodex` | Plan-bound API clients (Codex chat, usage / quota). | `CodingPlanAuthKit` |
+
+Pick `CodingPlanAuthKit` alone if you only need OAuth. Add `CodingPlanCodex`
+when you also want to call the ChatGPT backend.
+
+- iOS 17+ / macOS 14+, Swift 6 with strict concurrency
+- OAuth 2.0 + PKCE, Keychain-backed token storage (App Group ready)
+- Pluggable provider registry (Strategy pattern) for adding Anthropic / Google later
+- Buffered + streaming Codex API clients (live `AsyncThrowingStream<String>` deltas)
 
 ## Install
 
@@ -23,12 +31,15 @@ In `Package.swift`:
 ```swift
 .target(
     name: "MyApp",
-    dependencies: [.product(name: "CodingPlanAuthKit", package: "CodingPlanAuthKit")]
+    dependencies: [
+        .product(name: "CodingPlanAuthKit", package: "CodingPlanAuthKit"),
+        // .product(name: "CodingPlanCodex", package: "CodingPlanAuthKit"),  // optional
+    ]
 )
 ```
 
-For iOS, register a custom URL scheme in your `Info.plist` (e.g. `myapp`)
-so `ASWebAuthenticationSession` can return cleanly from the OAuth redirect.
+For iOS, register a custom URL scheme in `Info.plist` (e.g. `myapp`) so
+`ASWebAuthenticationSession` can return cleanly from the OAuth redirect.
 
 ## Quick start (SwiftUI)
 
@@ -53,77 +64,84 @@ final class SignIn {
         )
         credentials = try await service.completeLogin(
             session: session,
-            with: callbackURL,
-            providerId: "openai"
+            with: callbackURL
         )
     }
 }
 ```
 
-Once signed in, call the provider's APIs with the credentials:
+Once signed in, call plan-bound APIs with `CodingPlanCodex`:
 
 ```swift
+import CodingPlanCodex
+
 let codex = OpenAICodexClient()
-let answer = try await codex.createTextResponse(
+
+// One-shot:
+let response = try await codex.createTextResponse(
     prompt: "Refactor this Swift function...",
     credentials: credentials
 )
+
+// Or stream deltas as they arrive:
+for try await delta in codex.streamTextResponse(prompt: "...", credentials: credentials) {
+    print(delta, terminator: "")
+}
 ```
 
 ## Architecture
 
-CodingPlanAuthKit is built around two patterns:
+`CodingPlanAuthKit` is built around two patterns:
 
-- **Hexagonal / Ports & Adapters** — the domain (`Core/`) defines protocols
-  (`AuthProvider`, `TokenStorage`, `HTTPClient`); concrete adapters live in
-  `Infrastructure/` and `Providers/`.
+- **Hexagonal / Ports & Adapters** — `Core/` defines protocols
+  (`AuthProvider`, `TokenStorage`, `HTTPClient`, `LoginSession`); concrete
+  adapters live in `Infrastructure/` and `Providers/`.
 - **Strategy** — `AuthService` is a registry of `AuthProvider` strategies
-  keyed by `id`; adding a new provider is a matter of writing one new adapter.
+  keyed by `id`. A new provider is a config + a `OAuth2TokenResponseParser`.
 
 ```
-Sources/CodingPlanAuthKit/
-├── Core/                       Domain protocols + value types (the "ports")
-│   ├── AuthProvider.swift          ← protocol every provider implements
-│   ├── TokenStorage.swift          ← protocol for credential persistence
-│   ├── Credentials.swift           ← OAuth tokens + plan/account metadata
-│   ├── TokenType.swift             ← typed Bearer / extensible scheme
-│   └── AuthError.swift             ← typed errors (LocalizedError)
+Sources/
+├── CodingPlanAuthKit/                  ← OAuth + storage
+│   ├── Core/                               Domain protocols + value types
+│   │   ├── AuthProvider.swift
+│   │   ├── LoginSession.swift              (in AuthProvider.swift)
+│   │   ├── TokenStorage.swift
+│   │   ├── Credentials.swift
+│   │   ├── TokenType.swift
+│   │   └── AuthError.swift
+│   ├── Application/AuthService.swift   ← actor registry
+│   ├── Presentation/
+│   │   ├── AuthState.swift             ← @Observable for SwiftUI
+│   │   └── BrowserAuthSession.swift    ← ASWebAuthenticationSession wrapper
+│   ├── Infrastructure/
+│   │   ├── HTTP/HTTPClient.swift       ← typed buffered + streaming HTTP
+│   │   ├── OAuth/OAuthConfig.swift
+│   │   ├── OAuth/PKCE.swift
+│   │   ├── OAuth/OAuth2PKCEFlow.swift  ← reusable OAuth2 + PKCE engine
+│   │   ├── OAuth/OAuth2LoginSession.swift
+│   │   ├── OAuth/OAuth2TokenResponseParser.swift
+│   │   ├── OAuth/OAuth2Helpers.swift
+│   │   ├── Server/LocalCallbackServer.swift
+│   │   └── Storage/KeychainTokenStorage.swift  ← App-Group ready
+│   ├── Providers/OpenAI/Auth/          ← OpenAI-specific config + JWT parser
+│   │   ├── OpenAIAuthProvider.swift        (~50 LOC; wraps OAuth2PKCEFlow)
+│   │   ├── OpenAIOAuthConfig.swift
+│   │   └── OpenAITokenResponseParser.swift
+│   └── Documentation.docc/             ← DocC catalog
 │
-├── Application/                Use cases / orchestration
-│   └── AuthService.swift           ← actor; provider registry + refresh
-│
-├── Presentation/               UI integration (SwiftUI / AppKit / UIKit)
-│   ├── AuthState.swift             ← @Observable view-model glue
-│   └── BrowserAuthSession.swift    ← ASWebAuthenticationSession wrapper
-│
-├── Infrastructure/             Generic adapters (the "driven" side)
-│   ├── HTTP/HTTPClient.swift       ← typed HTTP client + streaming
-│   ├── OAuth/OAuthConfig.swift     ← provider-agnostic OAuth config
-│   ├── OAuth/PKCE.swift            ← S256 PKCE generator
-│   ├── OAuth/OAuth2PKCEFlow.swift  ← reusable OAuth2 + PKCE engine
-│   ├── OAuth/OAuth2LoginSession.swift
-│   ├── OAuth/OAuth2TokenResponseParser.swift
-│   ├── OAuth/OAuth2Helpers.swift
-│   ├── Server/LocalCallbackServer.swift  ← localhost redirect server
-│   └── Storage/KeychainTokenStorage.swift ← Keychain (with App-Group support)
-│
-└── Providers/                  Provider-specific adapters (the "driving" side)
-    └── OpenAI/
-        ├── Auth/                   ← OpenAI-specific config + JWT parser
-        │   ├── OpenAIAuthProvider.swift     (~50 LOC; wraps OAuth2PKCEFlow)
-        │   ├── OpenAIOAuthConfig.swift
-        │   └── OpenAITokenResponseParser.swift
-        └── API/                    ← Plan-bound API clients
-            ├── OpenAIBackend.swift
-            ├── OpenAICodexClient.swift  (buffered + streaming)
-            └── OpenAICodexUsageClient.swift
+└── CodingPlanCodex/                    ← Plan-bound API clients
+    ├── OpenAIBackend.swift                 backend constants
+    ├── OpenAICodexClient.swift             buffered + streaming
+    ├── OpenAICodexUsageClient.swift        rate-limit / quota
+    ├── CodexError.swift                    structured backend errors
+    └── Documentation.docc/
 ```
 
 ### Adding a new provider
 
-The generic `OAuth2PKCEFlow` engine handles PKCE, the local callback server,
-the authorization URL, the auth-code exchange, and refresh — so a new
-provider is essentially **a config + a token-response parser**:
+`OAuth2PKCEFlow` handles PKCE, the local callback server, the authorization
+URL, auth-code exchange, and refresh — so a new provider is essentially
+**a config + a token-response parser**:
 
 ```swift
 public struct AnthropicTokenResponseParser: OAuth2TokenResponseParser { … }
@@ -158,9 +176,9 @@ public actor AnthropicAuthProvider: AuthProvider {
 swift test
 ```
 
-The test suite covers OAuth URL building, token-response parsing, refresh
-behavior, the Keychain storage actor, the local callback server (real
-ports), and the Codex / usage clients via injected `HTTPClient` mocks.
+Covers OAuth URL building, token-response parsing, refresh behavior, the
+Keychain storage actor, the local callback server (real ports), and the
+Codex / usage clients via injected `HTTPClient` mocks.
 
 ## License
 

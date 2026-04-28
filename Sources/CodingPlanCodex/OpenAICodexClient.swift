@@ -1,6 +1,7 @@
 // OpenAICodexClient.swift
-// CodingPlanAuthKit
+// CodingPlanCodex
 
+import CodingPlanAuthKit
 import Foundation
 
 /// The non-streaming result of a Codex text-response call.
@@ -59,7 +60,7 @@ public struct OpenAICodexClient: Sendable {
         credentials: Credentials
     ) async throws -> OpenAICodexResponse {
         guard let accountId = credentials.accountId, !accountId.isEmpty else {
-            throw AuthError.notAuthenticated
+            throw CodexError.missingAccountId
         }
 
         let url = baseURL.appendingPathComponent("codex/responses")
@@ -103,7 +104,7 @@ public struct OpenAICodexClient: Sendable {
 
         guard response.isSuccess else {
             let message = Self.backendErrorMessage(from: response.body)
-            throw AuthError.serverError("Codex backend returned \(response.statusCode): \(message)")
+            throw CodexError.backendError(statusCode: response.statusCode, message: message)
         }
 
         return try Self.parseResponse(from: response.body)
@@ -127,7 +128,7 @@ public struct OpenAICodexClient: Sendable {
             let task = Task {
                 do {
                     guard let accountId = credentials.accountId, !accountId.isEmpty else {
-                        throw AuthError.notAuthenticated
+                        throw CodexError.missingAccountId
                     }
 
                     let url = baseURL.appendingPathComponent("codex/responses")
@@ -173,8 +174,9 @@ public struct OpenAICodexClient: Sendable {
                         var errorBuffer = Data()
                         for try await chunk in streaming.body { errorBuffer.append(chunk) }
                         let message = Self.backendErrorMessage(from: errorBuffer)
-                        throw AuthError.serverError(
-                            "Codex backend returned \(streaming.statusCode): \(message)"
+                        throw CodexError.backendError(
+                            statusCode: streaming.statusCode,
+                            message: message
                         )
                     }
 
@@ -267,7 +269,7 @@ public struct OpenAICodexClient: Sendable {
         }
 
         guard let stream = String(data: data, encoding: .utf8) else {
-            throw AuthError.invalidResponse
+            throw CodexError.invalidResponse
         }
 
         var deltas = ""
@@ -299,7 +301,7 @@ public struct OpenAICodexClient: Sendable {
                     completedText = outputText(from: response) ?? completedText
                 }
             case "response.failed", "response.incomplete":
-                throw AuthError.serverError(backendErrorMessage(from: event))
+                throw CodexError.backendError(statusCode: nil, message: backendErrorMessage(from: event))
             default:
                 break
             }
@@ -307,7 +309,7 @@ public struct OpenAICodexClient: Sendable {
 
         let text = deltas.isEmpty ? completedText : deltas
         guard let text, !text.isEmpty else {
-            throw AuthError.invalidResponse
+            throw CodexError.invalidResponse
         }
         return OpenAICodexResponse(text: text, responseId: responseId)
     }

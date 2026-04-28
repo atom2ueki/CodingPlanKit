@@ -1,6 +1,7 @@
 // OpenAICodexUsageClient.swift
-// CodingPlanAuthKit
+// CodingPlanCodex
 
+import CodingPlanAuthKit
 import Foundation
 
 /// Aggregated quota snapshot returned by ``OpenAICodexUsageClient``.
@@ -117,7 +118,7 @@ public struct OpenAICodexUsageClient: Sendable {
     /// Fetch the current rate-limit and credit snapshot for the signed-in user.
     public func fetchRateLimits(credentials: Credentials) async throws -> CodexRateLimitsResponse {
         guard let accountId = credentials.accountId, !accountId.isEmpty else {
-            throw AuthError.notAuthenticated
+            throw CodexError.missingAccountId
         }
 
         let url = baseURL.appendingPathComponent("wham/usage")
@@ -134,13 +135,13 @@ public struct OpenAICodexUsageClient: Sendable {
 
         guard response.isSuccess else {
             let message = String(data: response.body, encoding: .utf8) ?? "Unknown error"
-            throw AuthError.serverError("Usage backend returned \(response.statusCode): \(message)")
+            throw CodexError.backendError(statusCode: response.statusCode, message: message)
         }
 
         let payload = try JSONDecoder().decode(RateLimitStatusPayload.self, from: response.body)
         let snapshots = Self.rateLimitSnapshots(from: payload)
         guard let selected = snapshots.first(where: { $0.limitId == "codex" }) ?? snapshots.first else {
-            throw AuthError.invalidResponse
+            throw CodexError.invalidResponse
         }
 
         var byLimitId: [String: CodexRateLimitSnapshot] = [:]
