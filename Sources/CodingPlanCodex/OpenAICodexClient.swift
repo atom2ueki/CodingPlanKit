@@ -116,6 +116,89 @@ public struct OpenAICodexClient: Sendable {
         return try Self.parseResponse(from: response.body)
     }
 
+    /// `POST /codex/responses/compact` — compress the conversation history
+    /// into a smaller set of items that still preserves intent and context.
+    ///
+    /// Used by the official Codex agent loop when a turn would exceed the
+    /// model's context window. Returns the compressed `output` array as
+    /// ``JSONValue`` since each item carries a deep, provider-internal shape.
+    public func compactResponse(
+        body: JSONValue,
+        credentials: Credentials
+    ) async throws -> [JSONValue] {
+        guard let accountId = credentials.accountId, !accountId.isEmpty else {
+            throw CodexError.missingAccountId
+        }
+        let url = baseURL.appendingPathComponent("codex/responses/compact")
+        let bodyData = try JSONEncoder().encode(body)
+
+        let response = try await httpClient.send(HTTPRequest(
+            url: url,
+            method: .post,
+            headers: [
+                "Authorization": "Bearer \(credentials.accessToken)",
+                "chatgpt-account-id": accountId,
+                "originator": originator,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            ],
+            body: bodyData
+        ))
+
+        guard response.isSuccess else {
+            let message = Self.backendErrorMessage(from: response.body)
+            throw CodexError.backendError(statusCode: response.statusCode, message: message)
+        }
+
+        let value = try JSONDecoder().decode(JSONValue.self, from: response.body)
+        guard case .object(let outer) = value,
+              case .array(let items) = outer["output"] ?? .array([]) else {
+            throw CodexError.invalidResponse
+        }
+        return items
+    }
+
+    /// `POST /codex/memories/trace_summarize` — summarize a batch of raw
+    /// conversation traces into long-term memory entries.
+    ///
+    /// Used by Codex's "memories" feature. Returns the per-trace summary
+    /// objects as ``JSONValue``.
+    public func summarizeMemories(
+        body: JSONValue,
+        credentials: Credentials
+    ) async throws -> [JSONValue] {
+        guard let accountId = credentials.accountId, !accountId.isEmpty else {
+            throw CodexError.missingAccountId
+        }
+        let url = baseURL.appendingPathComponent("codex/memories/trace_summarize")
+        let bodyData = try JSONEncoder().encode(body)
+
+        let response = try await httpClient.send(HTTPRequest(
+            url: url,
+            method: .post,
+            headers: [
+                "Authorization": "Bearer \(credentials.accessToken)",
+                "chatgpt-account-id": accountId,
+                "originator": originator,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            ],
+            body: bodyData
+        ))
+
+        guard response.isSuccess else {
+            let message = Self.backendErrorMessage(from: response.body)
+            throw CodexError.backendError(statusCode: response.statusCode, message: message)
+        }
+
+        let value = try JSONDecoder().decode(JSONValue.self, from: response.body)
+        guard case .object(let outer) = value,
+              case .array(let items) = outer["output"] ?? .array([]) else {
+            throw CodexError.invalidResponse
+        }
+        return items
+    }
+
     /// Send a single prompt and stream the model's text deltas as they arrive.
     ///
     /// Each yielded `String` is one `response.output_text.delta` chunk from

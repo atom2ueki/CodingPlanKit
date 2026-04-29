@@ -72,6 +72,15 @@ print(snapshot.rateLimits.primary?.remainingPercent ?? 100)
 - ``CodexEnvironment``
 - ``CodexConfigRequirements``
 
+### Safety monitor
+
+- ``OpenAICodexSafetyClient``
+- ``CodexArcAuth``
+- ``CodexArcResult``
+- ``CodexArcOutcome``
+- ``CodexArcRiskLevel``
+- ``CodexArcEvidence``
+
 ### Generic JSON
 
 - ``JSONValue``
