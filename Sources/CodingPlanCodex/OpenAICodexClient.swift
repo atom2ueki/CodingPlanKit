@@ -321,40 +321,43 @@ public struct OpenAICodexClient: Sendable {
                     var current: [String] = []
                     var anyDeltaYielded = false
                     var pendingItemText: String?
-                    let traceImageEvents = !tools.isEmpty
-                    let startedAt = Date()
-                    var eventCount = 0
 
                     func flushEvent() throws {
                         defer { current.removeAll(keepingCapacity: true) }
                         guard let event = Self.decodeSSEEvent(dataLines: current) else { return }
-                        eventCount += 1
-                        let type = event["type"] as? String ?? "<no-type>"
-                        if traceImageEvents {
-                            let elapsed = String(format: "%.1f", Date().timeIntervalSince(startedAt))
-                            // For image_generation_call sub-events, include the
-                            // status so we can see in_progress / completed.
-                            let status = (event["item"] as? [String: Any])?["status"] as? String
-                                ?? event["status"] as? String
-                                ?? "—"
-                            print("[CodexStream +\(elapsed)s] event #\(eventCount) type=\(type) status=\(status)")
-                        }
                         switch event["type"] as? String {
                         case "response.output_text.delta":
                             if let delta = event["delta"] as? String, !delta.isEmpty {
                                 continuation.yield(.textDelta(delta))
                                 anyDeltaYielded = true
                             }
+                        case "response.output_item.added":
+                            // The backend adds an image_generation_call item when
+                            // the tool starts. Surface that as `.started`.
+                            if let item = event["item"] as? [String: Any],
+                               (item["type"] as? String) == "image_generation_call",
+                               let id = item["id"] as? String {
+                                continuation.yield(.imageEvent(.started(callId: id)))
+                            }
+                        case "response.image_generation_call.in_progress":
+                            if let id = Self.itemId(in: event) {
+                                continuation.yield(.imageEvent(.started(callId: id)))
+                            }
+                        case "response.image_generation_call.generating":
+                            if let id = Self.itemId(in: event) {
+                                continuation.yield(.imageEvent(.generating(callId: id)))
+                            }
+                        case "keepalive":
+                            continuation.yield(.imageEvent(.keepalive))
+                        case "response.image_generation_call.partial_image":
+                            if let image = Self.parsePartialImage(from: event) {
+                                continuation.yield(.imageEvent(.partial(image)))
+                            }
                         case "response.output_item.done":
                             guard let item = event["item"] as? [String: Any] else { return }
-                            // image_generation_call items carry a generated image
-                            // regardless of whether text deltas were also present.
+                            // image_generation_call items carry the final image.
                             if let image = Self.parseImageGenerationCall(from: item) {
-                                if traceImageEvents {
-                                    let elapsed = String(format: "%.1f", Date().timeIntervalSince(startedAt))
-                                    print("[CodexStream +\(elapsed)s] yielding image, pngBytes=\(image.pngData.count)")
-                                }
-                                continuation.yield(.generatedImage(image))
+                                continuation.yield(.imageEvent(.completed(image)))
                                 return
                             }
                             // Assistant message item: hold its text until response.completed
@@ -431,8 +434,38 @@ public struct OpenAICodexClient: Sendable {
             id: id,
             status: status,
             revisedPrompt: item["revised_prompt"] as? String,
-            pngData: pngData
+            pngData: pngData,
+            isPartial: false
         )
+    }
+
+    /// Parse a `response.image_generation_call.partial_image` event payload.
+    /// Wire shape: `{ "type": "...partial_image", "item_id": "ig_…",
+    /// "partial_image_b64": "…", "partial_image_index": 0 }`. Falls back
+    /// to alternative field names defensively in case the upstream renames.
+    private static func parsePartialImage(from event: [String: Any]) -> CodexImage? {
+        let id = (event["item_id"] as? String) ?? (event["id"] as? String) ?? ""
+        let base64 = (event["partial_image_b64"] as? String)
+            ?? (event["b64_json"] as? String)
+            ?? (event["partial_image"] as? String)
+        guard let base64, let pngData = Data(base64Encoded: base64) else {
+            return nil
+        }
+        return CodexImage(
+            id: id,
+            status: "generating",
+            revisedPrompt: nil,
+            pngData: pngData,
+            isPartial: true
+        )
+    }
+
+    /// Pull the `item_id` from a `response.image_generation_call.*` event.
+    private static func itemId(in event: [String: Any]) -> String? {
+        if let id = event["item_id"] as? String { return id }
+        if let item = event["item"] as? [String: Any],
+           let id = item["id"] as? String { return id }
+        return nil
     }
 
     private static func decodeSSEEvent(dataLines: [String]) -> [String: Any]? {
