@@ -9,8 +9,8 @@ let package = Package(
     ],
     products: [
         .library(
-            name: "CodingPlanAuthKit",
-            targets: ["CodingPlanAuthKit"]
+            name: "CodingPlanAuth",
+            targets: ["CodingPlanAuth"]
         ),
         .library(
             name: "CodingPlanCodex",
@@ -22,7 +22,7 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "CodingPlanAuthKit",
+            name: "CodingPlanAuth",
             dependencies: [
                 .product(name: "SwiftWebServer", package: "SwiftWebServer"),
             ],
@@ -33,19 +33,19 @@ let package = Package(
         ),
         .target(
             name: "CodingPlanCodex",
-            dependencies: ["CodingPlanAuthKit"],
+            dependencies: ["CodingPlanAuth"],
             swiftSettings: [
                 .enableUpcomingFeature("ExistentialAny"),
                 .enableUpcomingFeature("InferIsolatedConformances"),
             ]
         ),
         .testTarget(
-            name: "CodingPlanAuthKitTests",
-            dependencies: ["CodingPlanAuthKit"]
+            name: "CodingPlanAuthTests",
+            dependencies: ["CodingPlanAuth"]
         ),
         .testTarget(
             name: "CodingPlanCodexTests",
-            dependencies: ["CodingPlanCodex", "CodingPlanAuthKit"]
+            dependencies: ["CodingPlanCodex", "CodingPlanAuth"]
         ),
     ],
     swiftLanguageModes: [.v6]

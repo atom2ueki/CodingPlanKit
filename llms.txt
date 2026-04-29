@@ -4,49 +4,49 @@
 
 The repository ships **two SPM products** from one package (`CodingPlanKit`):
 
-- `CodingPlanAuthKit` — pure auth (OAuth + PKCE + Keychain). Depends only on [SwiftWebServer](https://github.com/atom2ueki/SwiftWebServer).
-- `CodingPlanCodex` — plan-bound API clients for the ChatGPT backend (Codex chat, usage / rate limits today; full Codex CLI surface coming). Depends on `CodingPlanAuthKit`.
+- `CodingPlanAuth` — pure auth (OAuth + PKCE + Keychain). Depends only on [SwiftWebServer](https://github.com/atom2ueki/SwiftWebServer).
+- `CodingPlanCodex` — plan-bound API clients for the ChatGPT backend (Codex chat, usage / rate limits today; full Codex CLI surface coming). Depends on `CodingPlanAuth`.
 
 Adopters pick either or both. The split is deliberate: a consumer who only needs OAuth shouldn't have to take the API plumbing along.
 
-Architecture is **Hexagonal / Ports & Adapters + Strategy**. Domain protocols live in `Sources/CodingPlanAuthKit/Core/` (`AuthProvider`, `LoginSession`, `TokenStorage`, `HTTPClient`); concrete adapters live in `Infrastructure/` (HTTP, OAuth, Keychain, callback server) and `Providers/` (OpenAI today). `AuthService` is the actor-based registry that keys `AuthProvider` strategies by id and orchestrates login/refresh/logout. `OAuth2PKCEFlow` is a reusable engine that handles PKCE generation, the local callback server, the authorization URL, the auth-code exchange, and token refresh — so a new provider is essentially `OAuthConfig` + an `OAuth2TokenResponseParser` conformance.
+Architecture is **Hexagonal / Ports & Adapters + Strategy**. Domain protocols live in `Sources/CodingPlanAuth/Core/` (`AuthProvider`, `LoginSession`, `TokenStorage`, `HTTPClient`); concrete adapters live in `Infrastructure/` (HTTP, OAuth, Keychain, callback server) and `Providers/` (OpenAI today). `AuthService` is the actor-based registry that keys `AuthProvider` strategies by id and orchestrates login/refresh/logout. `OAuth2PKCEFlow` is a reusable engine that handles PKCE generation, the local callback server, the authorization URL, the auth-code exchange, and token refresh — so a new provider is essentially `OAuthConfig` + an `OAuth2TokenResponseParser` conformance.
 
 Swift 6 strict concurrency is enabled; `ExistentialAny` and `InferIsolatedConformances` are turned on as upcoming features.
 
-## Auth core (`CodingPlanAuthKit`)
+## Auth core (`CodingPlanAuth`)
 
-- [Sources/CodingPlanAuthKit/Core/AuthProvider.swift](./Sources/CodingPlanAuthKit/Core/AuthProvider.swift): `AuthProvider` and `LoginSession` protocols — every provider's contract.
-- [Sources/CodingPlanAuthKit/Core/Credentials.swift](./Sources/CodingPlanAuthKit/Core/Credentials.swift): `Credentials` value type holding access/refresh/id tokens plus account metadata pulled from JWT claims.
-- [Sources/CodingPlanAuthKit/Core/TokenStorage.swift](./Sources/CodingPlanAuthKit/Core/TokenStorage.swift): `TokenStorage` protocol — pluggable persistence.
-- [Sources/CodingPlanAuthKit/Core/TokenType.swift](./Sources/CodingPlanAuthKit/Core/TokenType.swift): `TokenType` extensible string-typed enum (`.bearer`).
-- [Sources/CodingPlanAuthKit/Core/AuthError.swift](./Sources/CodingPlanAuthKit/Core/AuthError.swift): `AuthError` typed errors with `LocalizedError` conformance; `tokenExchangeFailed(statusCode:message:)` carries the HTTP status.
-- [Sources/CodingPlanAuthKit/Application/AuthService.swift](./Sources/CodingPlanAuthKit/Application/AuthService.swift): the actor registry. Registers providers, refreshes tokens transparently, persists via the injected `TokenStorage`.
+- [Sources/CodingPlanAuth/Core/AuthProvider.swift](./Sources/CodingPlanAuth/Core/AuthProvider.swift): `AuthProvider` and `LoginSession` protocols — every provider's contract.
+- [Sources/CodingPlanAuth/Core/Credentials.swift](./Sources/CodingPlanAuth/Core/Credentials.swift): `Credentials` value type holding access/refresh/id tokens plus account metadata pulled from JWT claims.
+- [Sources/CodingPlanAuth/Core/TokenStorage.swift](./Sources/CodingPlanAuth/Core/TokenStorage.swift): `TokenStorage` protocol — pluggable persistence.
+- [Sources/CodingPlanAuth/Core/TokenType.swift](./Sources/CodingPlanAuth/Core/TokenType.swift): `TokenType` extensible string-typed enum (`.bearer`).
+- [Sources/CodingPlanAuth/Core/AuthError.swift](./Sources/CodingPlanAuth/Core/AuthError.swift): `AuthError` typed errors with `LocalizedError` conformance; `tokenExchangeFailed(statusCode:message:)` carries the HTTP status.
+- [Sources/CodingPlanAuth/Application/AuthService.swift](./Sources/CodingPlanAuth/Application/AuthService.swift): the actor registry. Registers providers, refreshes tokens transparently, persists via the injected `TokenStorage`.
 
 ## Presentation (SwiftUI / AppKit)
 
-- [Sources/CodingPlanAuthKit/Presentation/AuthState.swift](./Sources/CodingPlanAuthKit/Presentation/AuthState.swift): `@Observable @MainActor` view-model glue scoped to one provider id.
-- [Sources/CodingPlanAuthKit/Presentation/BrowserAuthSession.swift](./Sources/CodingPlanAuthKit/Presentation/BrowserAuthSession.swift): `ASWebAuthenticationSession` wrapper with `async`/`await` semantics and a custom-scheme callback path.
+- [Sources/CodingPlanAuth/Presentation/AuthState.swift](./Sources/CodingPlanAuth/Presentation/AuthState.swift): `@Observable @MainActor` view-model glue scoped to one provider id.
+- [Sources/CodingPlanAuth/Presentation/BrowserAuthSession.swift](./Sources/CodingPlanAuth/Presentation/BrowserAuthSession.swift): `ASWebAuthenticationSession` wrapper with `async`/`await` semantics and a custom-scheme callback path.
 
 ## OAuth 2.0 + PKCE engine
 
-- [Sources/CodingPlanAuthKit/Infrastructure/OAuth/OAuth2PKCEFlow.swift](./Sources/CodingPlanAuthKit/Infrastructure/OAuth/OAuth2PKCEFlow.swift): the reusable flow — `beginLogin()` and `refresh(credentials:)`. Switchable refresh body encoding (`.formURLEncoded` or `.json` for OpenAI).
-- [Sources/CodingPlanAuthKit/Infrastructure/OAuth/OAuth2LoginSession.swift](./Sources/CodingPlanAuthKit/Infrastructure/OAuth/OAuth2LoginSession.swift): the generic `LoginSession` actor returned by the engine.
-- [Sources/CodingPlanAuthKit/Infrastructure/OAuth/OAuth2TokenResponseParser.swift](./Sources/CodingPlanAuthKit/Infrastructure/OAuth/OAuth2TokenResponseParser.swift): protocol providers conform to for their JWT claim shape.
-- [Sources/CodingPlanAuthKit/Infrastructure/OAuth/OAuthConfig.swift](./Sources/CodingPlanAuthKit/Infrastructure/OAuth/OAuthConfig.swift): provider-agnostic OAuth endpoint + scope config.
-- [Sources/CodingPlanAuthKit/Infrastructure/OAuth/PKCE.swift](./Sources/CodingPlanAuthKit/Infrastructure/OAuth/PKCE.swift): S256 PKCE generator.
-- [Sources/CodingPlanAuthKit/Infrastructure/OAuth/OAuth2Helpers.swift](./Sources/CodingPlanAuthKit/Infrastructure/OAuth/OAuth2Helpers.swift): `randomState`, `formURLEncoded`.
-- [Sources/CodingPlanAuthKit/Infrastructure/Server/LocalCallbackServer.swift](./Sources/CodingPlanAuthKit/Infrastructure/Server/LocalCallbackServer.swift): localhost HTTP server that intercepts the OAuth redirect.
+- [Sources/CodingPlanAuth/Infrastructure/OAuth/OAuth2PKCEFlow.swift](./Sources/CodingPlanAuth/Infrastructure/OAuth/OAuth2PKCEFlow.swift): the reusable flow — `beginLogin()` and `refresh(credentials:)`. Switchable refresh body encoding (`.formURLEncoded` or `.json` for OpenAI).
+- [Sources/CodingPlanAuth/Infrastructure/OAuth/OAuth2LoginSession.swift](./Sources/CodingPlanAuth/Infrastructure/OAuth/OAuth2LoginSession.swift): the generic `LoginSession` actor returned by the engine.
+- [Sources/CodingPlanAuth/Infrastructure/OAuth/OAuth2TokenResponseParser.swift](./Sources/CodingPlanAuth/Infrastructure/OAuth/OAuth2TokenResponseParser.swift): protocol providers conform to for their JWT claim shape.
+- [Sources/CodingPlanAuth/Infrastructure/OAuth/OAuthConfig.swift](./Sources/CodingPlanAuth/Infrastructure/OAuth/OAuthConfig.swift): provider-agnostic OAuth endpoint + scope config.
+- [Sources/CodingPlanAuth/Infrastructure/OAuth/PKCE.swift](./Sources/CodingPlanAuth/Infrastructure/OAuth/PKCE.swift): S256 PKCE generator.
+- [Sources/CodingPlanAuth/Infrastructure/OAuth/OAuth2Helpers.swift](./Sources/CodingPlanAuth/Infrastructure/OAuth/OAuth2Helpers.swift): `randomState`, `formURLEncoded`.
+- [Sources/CodingPlanAuth/Infrastructure/Server/LocalCallbackServer.swift](./Sources/CodingPlanAuth/Infrastructure/Server/LocalCallbackServer.swift): localhost HTTP server that intercepts the OAuth redirect.
 
 ## HTTP and storage
 
-- [Sources/CodingPlanAuthKit/Infrastructure/HTTP/HTTPClient.swift](./Sources/CodingPlanAuthKit/Infrastructure/HTTP/HTTPClient.swift): `HTTPClient` protocol + `URLSessionHTTPClient` + `HTTPMethod` / `HTTPRequest` / `HTTPResponse`. Buffered only — streaming lives in `CodingPlanCodex` directly on `URLSession.bytes(for:)`.
-- [Sources/CodingPlanAuthKit/Infrastructure/Storage/KeychainTokenStorage.swift](./Sources/CodingPlanAuthKit/Infrastructure/Storage/KeychainTokenStorage.swift): default `TokenStorage` adapter. Defaults service prefix to `Bundle.main.bundleIdentifier`. Optional `accessGroup:` parameter for sharing credentials across an app + extension via Keychain Access Group.
+- [Sources/CodingPlanAuth/Infrastructure/HTTP/HTTPClient.swift](./Sources/CodingPlanAuth/Infrastructure/HTTP/HTTPClient.swift): `HTTPClient` protocol + `URLSessionHTTPClient` + `HTTPMethod` / `HTTPRequest` / `HTTPResponse`. Buffered only — streaming lives in `CodingPlanCodex` directly on `URLSession.bytes(for:)`.
+- [Sources/CodingPlanAuth/Infrastructure/Storage/KeychainTokenStorage.swift](./Sources/CodingPlanAuth/Infrastructure/Storage/KeychainTokenStorage.swift): default `TokenStorage` adapter. Defaults service prefix to `Bundle.main.bundleIdentifier`. Optional `accessGroup:` parameter for sharing credentials across an app + extension via Keychain Access Group.
 
 ## OpenAI provider (auth)
 
-- [Sources/CodingPlanAuthKit/Providers/OpenAI/Auth/OpenAIAuthProvider.swift](./Sources/CodingPlanAuthKit/Providers/OpenAI/Auth/OpenAIAuthProvider.swift): ~50-line adapter wrapping `OAuth2PKCEFlow`.
-- [Sources/CodingPlanAuthKit/Providers/OpenAI/Auth/OpenAIOAuthConfig.swift](./Sources/CodingPlanAuthKit/Providers/OpenAI/Auth/OpenAIOAuthConfig.swift): client id, endpoints, scopes matching the official Codex CLI flow.
-- [Sources/CodingPlanAuthKit/Providers/OpenAI/Auth/OpenAITokenResponseParser.swift](./Sources/CodingPlanAuthKit/Providers/OpenAI/Auth/OpenAITokenResponseParser.swift): parses `chatgpt_account_id`, `chatgpt_plan_type`, and email out of the access / id token JWT claims.
+- [Sources/CodingPlanAuth/Providers/OpenAI/Auth/OpenAIAuthProvider.swift](./Sources/CodingPlanAuth/Providers/OpenAI/Auth/OpenAIAuthProvider.swift): ~50-line adapter wrapping `OAuth2PKCEFlow`.
+- [Sources/CodingPlanAuth/Providers/OpenAI/Auth/OpenAIOAuthConfig.swift](./Sources/CodingPlanAuth/Providers/OpenAI/Auth/OpenAIOAuthConfig.swift): client id, endpoints, scopes matching the official Codex CLI flow.
+- [Sources/CodingPlanAuth/Providers/OpenAI/Auth/OpenAITokenResponseParser.swift](./Sources/CodingPlanAuth/Providers/OpenAI/Auth/OpenAITokenResponseParser.swift): parses `chatgpt_account_id`, `chatgpt_plan_type`, and email out of the access / id token JWT claims.
 
 ## Plan-bound API clients (`CodingPlanCodex`)
 
@@ -57,7 +57,7 @@ Swift 6 strict concurrency is enabled; `ExistentialAny` and `InferIsolatedConfor
 
 ## Tests
 
-- [Tests/CodingPlanAuthKitTests/](./Tests/CodingPlanAuthKitTests): unit tests for the OAuth flow, PKCE, callback server (real ports), token storage. `MockHTTPClient` injects buffered HTTP responses.
+- [Tests/CodingPlanAuthTests/](./Tests/CodingPlanAuthTests): unit tests for the OAuth flow, PKCE, callback server (real ports), token storage. `MockHTTPClient` injects buffered HTTP responses.
 - [Tests/CodingPlanCodexTests/](./Tests/CodingPlanCodexTests): tests for the Codex / usage clients against a duplicate `MockHTTPClient`.
 
 ## Build, packaging, CI
@@ -79,6 +79,6 @@ Plan-bound API clients (the analog of `CodingPlanCodex` for that provider) are a
 ## Optional
 
 - [README.md](./README.md): user-facing overview, install snippet, SwiftUI quick start.
-- [CodingPlanAuthKit DocC catalog](./Sources/CodingPlanAuthKit/Documentation.docc/CodingPlanAuthKit.md)
+- [CodingPlanAuth DocC catalog](./Sources/CodingPlanAuth/Documentation.docc/CodingPlanAuth.md)
 - [CodingPlanCodex DocC catalog](./Sources/CodingPlanCodex/Documentation.docc/CodingPlanCodex.md)
 - [LICENSE](./LICENSE): MIT.

@@ -8,12 +8,12 @@ Plan-bound API clients for the OpenAI ChatGPT / Codex backend.
 
 ## Overview
 
-This product sits on top of `CodingPlanAuthKit` and consumes its
+This product sits on top of `CodingPlanAuth` and consumes its
 `Credentials` to charge requests against the signed-in user's plan
 instead of an API key.
 
 ```swift
-import CodingPlanAuthKit
+import CodingPlanAuth
 import CodingPlanCodex
 
 let codex = OpenAICodexClient()

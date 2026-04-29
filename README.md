@@ -9,13 +9,13 @@ The package ships **two products** (more to come):
 
 | Product | Purpose | Depends on |
 |---|---|---|
-| `CodingPlanAuthKit` | OAuth + token storage. Pure auth. | `SwiftWebServer` |
-| `CodingPlanCodex` | Plan-bound API clients (Codex chat, usage / quota). | `CodingPlanAuthKit` |
+| `CodingPlanAuth` | OAuth + token storage. Pure auth. | `SwiftWebServer` |
+| `CodingPlanCodex` | Plan-bound API clients (Codex chat, usage / quota). | `CodingPlanAuth` |
 
-Pick `CodingPlanAuthKit` alone if you only need OAuth. Add `CodingPlanCodex`
+Pick `CodingPlanAuth` alone if you only need OAuth. Add `CodingPlanCodex`
 when you also want to call the ChatGPT backend.
 
-**`CodingPlanAuthKit`**
+**`CodingPlanAuth`**
 
 - iOS 17+ / macOS 14+, Swift 6 with strict concurrency
 - OAuth 2.0 + PKCE, Keychain-backed token storage (App Group ready)
@@ -41,7 +41,7 @@ In `Package.swift`:
 .target(
     name: "MyApp",
     dependencies: [
-        .product(name: "CodingPlanAuthKit", package: "CodingPlanKit"),
+        .product(name: "CodingPlanAuth", package: "CodingPlanKit"),
         // .product(name: "CodingPlanCodex", package: "CodingPlanKit"),  // optional
     ]
 )
@@ -54,7 +54,7 @@ For iOS, register a custom URL scheme in `Info.plist` (e.g. `myapp`) so
 
 ```swift
 import SwiftUI
-import CodingPlanAuthKit
+import CodingPlanAuth
 
 @MainActor
 @Observable
@@ -101,7 +101,7 @@ for try await delta in codex.streamTextResponse(prompt: "...", credentials: cred
 ## Documentation
 
 Full architecture, types, and "how to add a provider" are in the DocC catalogs
-([`CodingPlanAuthKit`](Sources/CodingPlanAuthKit/Documentation.docc/CodingPlanAuthKit.md),
+([`CodingPlanAuth`](Sources/CodingPlanAuth/Documentation.docc/CodingPlanAuth.md),
 [`CodingPlanCodex`](Sources/CodingPlanCodex/Documentation.docc/CodingPlanCodex.md))
 and in [`llms.txt`](./llms.txt) for AI agents.
 

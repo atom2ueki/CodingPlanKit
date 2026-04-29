@@ -1,5 +1,5 @@
 import Foundation
-import CodingPlanAuth
+@testable import CodingPlanAuth
 
 struct RecordedHTTPRequest: Sendable, Equatable {
     let url: URL

@@ -1,7 +1,7 @@
 // OpenAICodexClient.swift
 // CodingPlanCodex
 
-import CodingPlanAuthKit
+import CodingPlanAuth
 import Foundation
 
 /// The non-streaming result of a Codex text-response call.

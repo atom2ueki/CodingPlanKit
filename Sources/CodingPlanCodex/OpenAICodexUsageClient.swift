@@ -1,7 +1,7 @@
 // OpenAICodexUsageClient.swift
 // CodingPlanCodex
 
-import CodingPlanAuthKit
+import CodingPlanAuth
 import Foundation
 
 /// Aggregated quota snapshot returned by ``OpenAICodexUsageClient``.
