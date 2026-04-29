@@ -321,10 +321,24 @@ public struct OpenAICodexClient: Sendable {
                     var current: [String] = []
                     var anyDeltaYielded = false
                     var pendingItemText: String?
+                    let traceImageEvents = !tools.isEmpty
+                    let startedAt = Date()
+                    var eventCount = 0
 
                     func flushEvent() throws {
                         defer { current.removeAll(keepingCapacity: true) }
                         guard let event = Self.decodeSSEEvent(dataLines: current) else { return }
+                        eventCount += 1
+                        let type = event["type"] as? String ?? "<no-type>"
+                        if traceImageEvents {
+                            let elapsed = String(format: "%.1f", Date().timeIntervalSince(startedAt))
+                            // For image_generation_call sub-events, include the
+                            // status so we can see in_progress / completed.
+                            let status = (event["item"] as? [String: Any])?["status"] as? String
+                                ?? event["status"] as? String
+                                ?? "—"
+                            print("[CodexStream +\(elapsed)s] event #\(eventCount) type=\(type) status=\(status)")
+                        }
                         switch event["type"] as? String {
                         case "response.output_text.delta":
                             if let delta = event["delta"] as? String, !delta.isEmpty {
@@ -336,6 +350,10 @@ public struct OpenAICodexClient: Sendable {
                             // image_generation_call items carry a generated image
                             // regardless of whether text deltas were also present.
                             if let image = Self.parseImageGenerationCall(from: item) {
+                                if traceImageEvents {
+                                    let elapsed = String(format: "%.1f", Date().timeIntervalSince(startedAt))
+                                    print("[CodexStream +\(elapsed)s] yielding image, pngBytes=\(image.pngData.count)")
+                                }
                                 continuation.yield(.generatedImage(image))
                                 return
                             }
