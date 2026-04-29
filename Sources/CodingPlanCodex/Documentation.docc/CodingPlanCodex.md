@@ -42,6 +42,9 @@ print(snapshot.rateLimits.primary?.remainingPercent ?? 100)
 
 - ``OpenAICodexClient``
 - ``OpenAICodexResponse``
+- ``CodexStreamPart``
+- ``CodexImage``
+- ``CodexTool``
 
 ### Usage / rate limits
 
