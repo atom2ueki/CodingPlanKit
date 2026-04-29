@@ -58,6 +58,18 @@ print(snapshot.rateLimits.primary?.remainingPercent ?? 100)
 - ``CodexModelInfo``
 - ``CodexModelVisibility``
 
+### Cloud tasks
+
+- ``OpenAICodexTasksClient``
+- ``CodexTaskListItem``
+- ``CodexTaskList``
+- ``CodexTaskDetails``
+- ``CodexSiblingTurns``
+
+### Generic JSON
+
+- ``JSONValue``
+
 ### Configuration
 
 - ``OpenAIBackend``
