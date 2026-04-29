@@ -82,7 +82,8 @@ actor LocalCallbackServer {
                     response.send(responseHTML)
                 }
 
-                Task { await self?.resume(with: params) }
+                let target = self
+                Task { await target?.resume(with: params) }
             }
 
             let listenPort = self.port
