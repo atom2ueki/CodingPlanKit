@@ -295,6 +295,13 @@ public struct OpenAICodexClient: Sendable {
                     urlRequest.setValue(originator, forHTTPHeaderField: "originator")
                     urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
                     urlRequest.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+                    // The Codex SSE stream can go silent for long stretches —
+                    // particularly during image_generation_call, where no
+                    // bytes arrive until the PNG is rendered (30-120+s).
+                    // URLSession's default 60s no-data timeout aborts those.
+                    // Bump to 5 minutes; the consumer can still cancel via
+                    // Task.cancel() at any point.
+                    urlRequest.timeoutInterval = 300
 
                     let (bytes, response) = try await urlSession.bytes(for: urlRequest)
                     guard let http = response as? HTTPURLResponse else {
