@@ -98,86 +98,12 @@ for try await delta in codex.streamTextResponse(prompt: "...", credentials: cred
 }
 ```
 
-## Architecture
+## Documentation
 
-`CodingPlanAuthKit` is built around two patterns:
-
-- **Hexagonal / Ports & Adapters** — `Core/` defines protocols
-  (`AuthProvider`, `TokenStorage`, `HTTPClient`, `LoginSession`); concrete
-  adapters live in `Infrastructure/` and `Providers/`.
-- **Strategy** — `AuthService` is a registry of `AuthProvider` strategies
-  keyed by `id`. A new provider is a config + a `OAuth2TokenResponseParser`.
-
-```
-Sources/
-├── CodingPlanAuthKit/                  ← OAuth + storage
-│   ├── Core/                               Domain protocols + value types
-│   │   ├── AuthProvider.swift
-│   │   ├── LoginSession.swift              (in AuthProvider.swift)
-│   │   ├── TokenStorage.swift
-│   │   ├── Credentials.swift
-│   │   ├── TokenType.swift
-│   │   └── AuthError.swift
-│   ├── Application/AuthService.swift   ← actor registry
-│   ├── Presentation/
-│   │   ├── AuthState.swift             ← @Observable for SwiftUI
-│   │   └── BrowserAuthSession.swift    ← ASWebAuthenticationSession wrapper
-│   ├── Infrastructure/
-│   │   ├── HTTP/HTTPClient.swift       ← typed buffered + streaming HTTP
-│   │   ├── OAuth/OAuthConfig.swift
-│   │   ├── OAuth/PKCE.swift
-│   │   ├── OAuth/OAuth2PKCEFlow.swift  ← reusable OAuth2 + PKCE engine
-│   │   ├── OAuth/OAuth2LoginSession.swift
-│   │   ├── OAuth/OAuth2TokenResponseParser.swift
-│   │   ├── OAuth/OAuth2Helpers.swift
-│   │   ├── Server/LocalCallbackServer.swift
-│   │   └── Storage/KeychainTokenStorage.swift  ← App-Group ready
-│   ├── Providers/OpenAI/Auth/          ← OpenAI-specific config + JWT parser
-│   │   ├── OpenAIAuthProvider.swift        (~50 LOC; wraps OAuth2PKCEFlow)
-│   │   ├── OpenAIOAuthConfig.swift
-│   │   └── OpenAITokenResponseParser.swift
-│   └── Documentation.docc/             ← DocC catalog
-│
-└── CodingPlanCodex/                    ← Plan-bound API clients
-    ├── OpenAIBackend.swift                 backend constants
-    ├── OpenAICodexClient.swift             buffered + streaming
-    ├── OpenAICodexUsageClient.swift        rate-limit / quota
-    ├── CodexError.swift                    structured backend errors
-    └── Documentation.docc/
-```
-
-### Adding a new provider
-
-`OAuth2PKCEFlow` handles PKCE, the local callback server, the authorization
-URL, auth-code exchange, and refresh — so a new provider is essentially
-**a config + a token-response parser**:
-
-```swift
-public struct AnthropicTokenResponseParser: OAuth2TokenResponseParser { … }
-
-public actor AnthropicAuthProvider: AuthProvider {
-    public let id = "anthropic"
-    public let name = "Anthropic"
-    private let flow: OAuth2PKCEFlow
-
-    public init(callbackScheme: String? = nil) {
-        self.flow = OAuth2PKCEFlow(
-            providerId: "anthropic",
-            config: AnthropicOAuthConfig.default(),
-            parser: AnthropicTokenResponseParser(),
-            callbackScheme: callbackScheme
-        )
-    }
-
-    public func beginLogin() async throws -> any LoginSession {
-        try await flow.beginLogin()
-    }
-
-    public func refresh(credentials: Credentials) async throws -> Credentials {
-        try await flow.refresh(credentials: credentials)
-    }
-}
-```
+Full architecture, types, and "how to add a provider" are in the DocC catalogs
+([`CodingPlanAuthKit`](Sources/CodingPlanAuthKit/Documentation.docc/CodingPlanAuthKit.md),
+[`CodingPlanCodex`](Sources/CodingPlanCodex/Documentation.docc/CodingPlanCodex.md))
+and in [`llms.txt`](./llms.txt) for AI agents.
 
 ## Testing
 
