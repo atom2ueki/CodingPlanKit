@@ -1,11 +1,11 @@
-# CodingPlanAuthKit
+# CodingPlanKit
 
-OAuth 2.0 + PKCE for AI coding-plan accounts (OpenAI Codex / ChatGPT today,
-more providers next) on iOS 17+ / macOS 14+. Sign users into their existing
-plan, persist credentials in the Keychain, and let your app inherit their
-quota — no API keys, no per-token billing.
+Umbrella Swift package for working with AI coding-plan accounts on iOS 17+ /
+macOS 14+. Sign users in with OAuth 2.0 + PKCE, persist credentials in the
+Keychain, and call plan-bound APIs that charge the user's plan instead of
+your API key — no per-token billing.
 
-The package ships **two products**:
+The package ships **two products** (more to come):
 
 | Product | Purpose | Depends on |
 |---|---|---|
@@ -34,15 +34,15 @@ when you also want to call the ChatGPT backend.
 In `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/atom2ueki/CodingPlanAuthKit.git", from: "0.1.0"),
+.package(url: "https://github.com/atom2ueki/CodingPlanKit.git", from: "0.1.0"),
 ```
 
 ```swift
 .target(
     name: "MyApp",
     dependencies: [
-        .product(name: "CodingPlanAuthKit", package: "CodingPlanAuthKit"),
-        // .product(name: "CodingPlanCodex", package: "CodingPlanAuthKit"),  // optional
+        .product(name: "CodingPlanAuthKit", package: "CodingPlanKit"),
+        // .product(name: "CodingPlanCodex", package: "CodingPlanKit"),  // optional
     ]
 )
 ```

@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "CodingPlanAuthKit",
+    name: "CodingPlanKit",
     platforms: [
         .iOS(.v17),
         .macOS(.v14),
