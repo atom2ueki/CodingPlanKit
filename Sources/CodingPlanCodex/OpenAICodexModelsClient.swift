@@ -85,6 +85,25 @@ public struct CodexModelInfo: Sendable, Equatable {
     }
 }
 
+/// Result of a `/codex/models` call.
+///
+/// `models` is the parsed list. `etag` carries the response's ETag header
+/// for caller-side conditional revalidation. `rawJSON` is the unmodified
+/// response body — useful when the parser surfaces fewer models than you
+/// expect, or for downstream code that wants to decode fields the typed
+/// shape doesn't expose.
+public struct CodexModelsResponse: Sendable, Equatable {
+    public let models: [CodexModelInfo]
+    public let etag: String?
+    public let rawJSON: Data
+
+    public init(models: [CodexModelInfo], etag: String?, rawJSON: Data) {
+        self.models = models
+        self.etag = etag
+        self.rawJSON = rawJSON
+    }
+}
+
 /// Client for the `/codex/models` endpoint.
 public struct OpenAICodexModelsClient: Sendable {
     private let httpClient: any HTTPClient
@@ -107,13 +126,15 @@ public struct OpenAICodexModelsClient: Sendable {
     /// - Parameters:
     ///   - clientVersion: Identifies the client to the backend. The
     ///     official Codex CLI passes its CLI version (e.g. `"0.99.0"`).
+    ///     The backend rejects non-SemVer formats with HTTP 400.
     ///   - credentials: Plan credentials from ``AuthService/credentials(for:)``.
-    /// - Returns: A tuple of `(models, etag)`. The ETag, when present,
-    ///   can be used by the caller for conditional revalidation later.
+    /// - Returns: ``CodexModelsResponse`` carrying the parsed models, the
+    ///   ETag header for caller-side conditional revalidation, and the raw
+    ///   response body for diagnostics or downstream re-decoding.
     public func listModels(
         clientVersion: String,
         credentials: Credentials
-    ) async throws -> (models: [CodexModelInfo], etag: String?) {
+    ) async throws -> CodexModelsResponse {
         guard let accountId = credentials.accountId, !accountId.isEmpty else {
             throw CodexError.missingAccountId
         }
@@ -145,7 +166,7 @@ public struct OpenAICodexModelsClient: Sendable {
 
         let etag = response.headers.first(where: { $0.key.caseInsensitiveCompare("etag") == .orderedSame })?.value
         let models = try Self.parse(response.body)
-        return (models, etag)
+        return CodexModelsResponse(models: models, etag: etag, rawJSON: response.body)
     }
 
     static func parse(_ data: Data) throws -> [CodexModelInfo] {

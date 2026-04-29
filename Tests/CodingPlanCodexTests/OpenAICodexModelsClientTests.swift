@@ -36,8 +36,11 @@ struct OpenAICodexModelsClientTests {
         let client = OpenAICodexModelsClient(httpClient: httpClient)
         let credentials = Credentials(accessToken: "access-token", accountId: "account-123")
 
-        let (models, etag) = try await client.listModels(clientVersion: "0.99.0", credentials: credentials)
+        let response = try await client.listModels(clientVersion: "0.99.0", credentials: credentials)
+        let models = response.models
+        let etag = response.etag
 
+        #expect(response.rawJSON == payload)
         #expect(models.count == 2)
         #expect(models[0].slug == "gpt-5.5")
         #expect(models[0].displayName == "GPT-5.5")
