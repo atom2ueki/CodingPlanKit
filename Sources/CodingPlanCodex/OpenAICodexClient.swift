@@ -270,13 +270,55 @@ public struct OpenAICodexClient: Sendable {
 
                     // SSE events are separated by blank lines. Accumulate
                     // each event's `data:` lines, then decode at the boundary.
+                    // Yield text from any of the events the backend might use:
+                    //   - response.output_text.delta  (the usual streaming case)
+                    //   - response.output_item.done   (short replies sometimes arrive in one item)
+                    //   - response.completed          (final fallback)
                     var current: [String] = []
+                    var anyDeltaYielded = false
+                    var pendingItemText: String?
+
+                    func flushEvent() throws {
+                        defer { current.removeAll(keepingCapacity: true) }
+                        guard let event = Self.decodeSSEEvent(dataLines: current) else { return }
+                        switch event["type"] as? String {
+                        case "response.output_text.delta":
+                            if let delta = event["delta"] as? String, !delta.isEmpty {
+                                continuation.yield(delta)
+                                anyDeltaYielded = true
+                            }
+                        case "response.output_item.done":
+                            if !anyDeltaYielded,
+                               let item = event["item"] as? [String: Any],
+                               (item["role"] as? String) == "assistant",
+                               let text = Self.outputText(from: item),
+                               !text.isEmpty {
+                                pendingItemText = text
+                            }
+                        case "response.completed":
+                            if !anyDeltaYielded {
+                                if let response = event["response"] as? [String: Any],
+                                   let text = Self.outputText(from: response), !text.isEmpty {
+                                    continuation.yield(text)
+                                    anyDeltaYielded = true
+                                } else if let text = pendingItemText {
+                                    continuation.yield(text)
+                                    anyDeltaYielded = true
+                                }
+                            }
+                        case "response.failed", "response.incomplete":
+                            throw CodexError.backendError(
+                                statusCode: nil,
+                                message: Self.backendErrorMessage(from: event)
+                            )
+                        default:
+                            break
+                        }
+                    }
+
                     for try await line in bytes.lines {
                         if line.isEmpty {
-                            if let delta = Self.delta(fromDataLines: current) {
-                                continuation.yield(delta)
-                            }
-                            current.removeAll(keepingCapacity: true)
+                            try flushEvent()
                         } else if line.hasPrefix("data:") {
                             current.append(
                                 String(line.dropFirst("data:".count))
@@ -284,8 +326,9 @@ public struct OpenAICodexClient: Sendable {
                             )
                         }
                     }
-                    if !current.isEmpty, let delta = Self.delta(fromDataLines: current) {
-                        continuation.yield(delta)
+                    try flushEvent()
+                    if !anyDeltaYielded, let text = pendingItemText {
+                        continuation.yield(text)
                     }
                     continuation.finish()
                 } catch {
@@ -296,17 +339,14 @@ public struct OpenAICodexClient: Sendable {
         }
     }
 
-    private static func delta(fromDataLines lines: [String]) -> String? {
-        guard !lines.isEmpty else { return nil }
-        let payload = lines.joined(separator: "\n")
-        guard let payloadData = payload.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any],
-              let type = json["type"] as? String,
-              type == "response.output_text.delta",
-              let chunk = json["delta"] as? String else {
+    private static func decodeSSEEvent(dataLines: [String]) -> [String: Any]? {
+        guard !dataLines.isEmpty else { return nil }
+        let payload = dataLines.joined(separator: "\n")
+        guard let data = payload.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return nil
         }
-        return chunk
+        return json
     }
 
     private static func outputText(from json: [String: Any]) -> String? {
