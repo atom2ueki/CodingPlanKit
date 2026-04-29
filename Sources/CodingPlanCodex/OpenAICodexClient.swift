@@ -327,18 +327,17 @@ public struct OpenAICodexClient: Sendable {
                     print("[CodexStream] entering line loop")
                     for try await line in bytes.lines {
                         lineCount += 1
-                        // URLSession.AsyncBytes.lines splits on \n but
-                        // preserves the \r from CRLF endings. The Codex
-                        // SSE stream uses CRLF, so the blank separator
-                        // arrives as "\r" — not "" — and an unwary
-                        // `line.isEmpty` check would never fire. Trim
-                        // each line first so empty + "data:" detection
-                        // is line-ending agnostic.
                         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
                         if lineCount <= 4 || lineCount % 25 == 0 {
                             print("[CodexStream] line #\(lineCount) prefix=\(trimmed.prefix(60))")
                         }
-                        if trimmed.isEmpty {
+                        // The Codex backend's SSE stream omits the standard
+                        // blank-line separator between events. Each event is
+                        // just `event: <name>\ndata: <json>` with no
+                        // terminator. Treat either an empty line OR the next
+                        // `event:` header as the boundary that finalises the
+                        // previous event.
+                        if trimmed.isEmpty || trimmed.hasPrefix("event:") {
                             try flushEvent()
                         } else if trimmed.hasPrefix("data:") {
                             current.append(
