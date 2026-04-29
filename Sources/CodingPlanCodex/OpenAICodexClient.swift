@@ -220,7 +220,6 @@ public struct OpenAICodexClient: Sendable {
                         throw CodexError.missingAccountId
                     }
 
-                    print("[CodexStream] enter prompt=\(prompt.prefix(40)) model=\(model)")
                     let url = baseURL.appendingPathComponent("codex/responses")
                     let requestBody: [String: Any] = [
                         "model": model,
@@ -254,12 +253,10 @@ public struct OpenAICodexClient: Sendable {
                     urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
                     urlRequest.setValue("text/event-stream", forHTTPHeaderField: "Accept")
 
-                    print("[CodexStream] awaiting bytes(for:) ...")
                     let (bytes, response) = try await urlSession.bytes(for: urlRequest)
                     guard let http = response as? HTTPURLResponse else {
                         throw CodexError.invalidResponse
                     }
-                    print("[CodexStream] got response status=\(http.statusCode) headers=\(http.allHeaderFields.count)")
 
                     guard (200..<300).contains(http.statusCode) else {
                         var errorBuffer = Data()
@@ -280,15 +277,10 @@ public struct OpenAICodexClient: Sendable {
                     var current: [String] = []
                     var anyDeltaYielded = false
                     var pendingItemText: String?
-                    var lineCount = 0
-                    var eventCount = 0
 
                     func flushEvent() throws {
                         defer { current.removeAll(keepingCapacity: true) }
                         guard let event = Self.decodeSSEEvent(dataLines: current) else { return }
-                        eventCount += 1
-                        let type = event["type"] as? String ?? "<no-type>"
-                        print("[CodexStream] event #\(eventCount) type=\(type)")
                         switch event["type"] as? String {
                         case "response.output_text.delta":
                             if let delta = event["delta"] as? String, !delta.isEmpty {
@@ -324,19 +316,14 @@ public struct OpenAICodexClient: Sendable {
                         }
                     }
 
-                    print("[CodexStream] entering line loop")
+                    // The Codex backend's SSE stream omits the standard
+                    // blank-line separator between events. Each event arrives
+                    // as `event: <name>\ndata: <json>` with the next event's
+                    // header following directly. Treat either an empty line OR
+                    // the next `event:` header as the boundary that finalises
+                    // the previous event.
                     for try await line in bytes.lines {
-                        lineCount += 1
                         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if lineCount <= 4 || lineCount % 25 == 0 {
-                            print("[CodexStream] line #\(lineCount) prefix=\(trimmed.prefix(60))")
-                        }
-                        // The Codex backend's SSE stream omits the standard
-                        // blank-line separator between events. Each event is
-                        // just `event: <name>\ndata: <json>` with no
-                        // terminator. Treat either an empty line OR the next
-                        // `event:` header as the boundary that finalises the
-                        // previous event.
                         if trimmed.isEmpty || trimmed.hasPrefix("event:") {
                             try flushEvent()
                         } else if trimmed.hasPrefix("data:") {
@@ -347,7 +334,6 @@ public struct OpenAICodexClient: Sendable {
                         }
                     }
                     try flushEvent()
-                    print("[CodexStream] finish lines=\(lineCount) events=\(eventCount) anyDelta=\(anyDeltaYielded) pending=\(pendingItemText?.count ?? 0)")
                     if !anyDeltaYielded, let text = pendingItemText {
                         continuation.yield(text)
                     }
