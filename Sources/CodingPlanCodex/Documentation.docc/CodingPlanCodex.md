@@ -50,6 +50,13 @@ print(snapshot.rateLimits.primary?.remainingPercent ?? 100)
 - ``CodexRateLimitSnapshot``
 - ``CodexRateLimitWindow``
 - ``CodexCreditsSnapshot``
+- ``CodexCreditNudgeType``
+
+### Models
+
+- ``OpenAICodexModelsClient``
+- ``CodexModelInfo``
+- ``CodexModelVisibility``
 
 ### Configuration
 

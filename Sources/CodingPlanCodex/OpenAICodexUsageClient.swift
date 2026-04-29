@@ -82,6 +82,14 @@ public struct CodexRateLimitWindow: Sendable, Equatable {
     }
 }
 
+/// Which kind of "low credit" condition the nudge email should reference.
+public enum CodexCreditNudgeType: String, Sendable, Codable {
+    /// User is low on pay-as-you-go credits.
+    case credits = "Credits"
+    /// User has hit their plan's usage limit.
+    case usageLimit = "UsageLimit"
+}
+
 /// Pay-as-you-go credit balance reported alongside rate limits.
 public struct CodexCreditsSnapshot: Sendable, Equatable {
     /// `true` when any pay-as-you-go credits are present.
@@ -149,6 +157,43 @@ public struct OpenAICodexUsageClient: Sendable {
             byLimitId[snapshot.limitId ?? "codex"] = snapshot
         }
         return CodexRateLimitsResponse(rateLimits: selected, rateLimitsByLimitId: byLimitId)
+    }
+
+    /// Ask the backend to send the user a "you're low on credits / hit
+    /// your usage limit" reminder email. The official Codex CLI fires
+    /// this when displaying the corresponding status banner.
+    ///
+    /// - Parameters:
+    ///   - creditType: Which condition the email should describe.
+    ///   - credentials: Plan credentials from ``AuthService/credentials(for:)``.
+    public func sendAddCreditsNudgeEmail(
+        creditType: CodexCreditNudgeType,
+        credentials: Credentials
+    ) async throws {
+        guard let accountId = credentials.accountId, !accountId.isEmpty else {
+            throw CodexError.missingAccountId
+        }
+
+        let url = baseURL.appendingPathComponent("wham/accounts/send_add_credits_nudge_email")
+        let body = try JSONEncoder().encode(["credit_type": creditType.rawValue])
+
+        let response = try await httpClient.send(HTTPRequest(
+            url: url,
+            method: .post,
+            headers: [
+                "Authorization": "Bearer \(credentials.accessToken)",
+                "ChatGPT-Account-Id": accountId,
+                "originator": originator,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            ],
+            body: body
+        ))
+
+        guard response.isSuccess else {
+            let message = String(data: response.body, encoding: .utf8) ?? "Unknown error"
+            throw CodexError.backendError(statusCode: response.statusCode, message: message)
+        }
     }
 
     private static func rateLimitSnapshots(from payload: RateLimitStatusPayload) -> [CodexRateLimitSnapshot] {

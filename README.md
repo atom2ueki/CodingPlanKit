@@ -42,7 +42,7 @@ In `Package.swift`:
     name: "MyApp",
     dependencies: [
         .product(name: "CodingPlanAuth", package: "CodingPlanKit"),
-        // .product(name: "CodingPlanCodex", package: "CodingPlanKit"),  // optional
+        .product(name: "CodingPlanCodex", package: "CodingPlanKit"),
     ]
 )
 ```
