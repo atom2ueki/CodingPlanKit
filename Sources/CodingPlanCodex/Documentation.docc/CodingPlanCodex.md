@@ -66,6 +66,12 @@ print(snapshot.rateLimits.primary?.remainingPercent ?? 100)
 - ``CodexTaskDetails``
 - ``CodexSiblingTurns``
 
+### Environments / managed config
+
+- ``OpenAICodexEnvironmentsClient``
+- ``CodexEnvironment``
+- ``CodexConfigRequirements``
+
 ### Generic JSON
 
 - ``JSONValue``
