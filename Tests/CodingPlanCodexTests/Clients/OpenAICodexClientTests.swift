@@ -73,4 +73,33 @@ struct OpenAICodexClientTests {
         #expect(contentItem["type"] as? String == "input_text")
         #expect(contentItem["text"] as? String == "ping")
     }
+
+    @Test
+    func createTextResponseParsesAdjacentSSEEvents() async throws {
+        let endpoint = URL(string: "https://chatgpt.com/backend-api/codex/responses")!
+        let responseStream = """
+        event: response.created
+        data: {"type":"response.created","response":{"id":"resp_456"}}
+        event: response.output_text.delta
+        data: {"type":"response.output_text.delta","delta":"po"}
+        event: response.output_text.delta
+        data: {"type":"response.output_text.delta","delta":"ng"}
+        event: response.completed
+        data: {"type":"response.completed","response":{"id":"resp_456"}}
+        """.data(using: .utf8)!
+
+        let httpClient = MockHTTPClient()
+        await httpClient.setResponse(for: endpoint, data: responseStream, statusCode: 200)
+
+        let client = OpenAICodexClient(httpClient: httpClient)
+        let credentials = Credentials(accessToken: "access-token", accountId: "account-123")
+
+        let response = try await client.createTextResponse(
+            prompt: "ping",
+            credentials: credentials
+        )
+
+        #expect(response.responseId == "resp_456")
+        #expect(response.text == "pong")
+    }
 }

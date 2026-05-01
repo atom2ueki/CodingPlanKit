@@ -36,26 +36,47 @@ public final class BrowserAuthSession: NSObject {
             throw AuthError.browserPresentationFailed("A browser authentication session is already active.")
         }
 
-        return try await withCheckedThrowingContinuation { continuation in
-            self.continuation = continuation
-            let session = ASWebAuthenticationSession(
-                url: url,
-                callbackURLScheme: callbackScheme
-            ) { [weak self] callbackURL, error in
-                Task { @MainActor in
-                    self?.finish(callbackURL: callbackURL, error: error)
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                do {
+                    try Task.checkCancellation()
+                } catch {
+                    continuation.resume(throwing: AuthError.cancelled)
+                    return
+                }
+
+                self.continuation = continuation
+                let session = ASWebAuthenticationSession(
+                    url: url,
+                    callbackURLScheme: callbackScheme
+                ) { [weak self] callbackURL, error in
+                    Task { @MainActor in
+                        self?.finish(callbackURL: callbackURL, error: error)
+                    }
+                }
+                session.prefersEphemeralWebBrowserSession = false
+                session.presentationContextProvider = self
+                self.session = session
+                if !session.start() {
+                    finish(
+                        callbackURL: nil,
+                        error: AuthError.browserPresentationFailed("The system refused to start the browser authentication session.")
+                    )
                 }
             }
-            session.prefersEphemeralWebBrowserSession = false
-            session.presentationContextProvider = self
-            self.session = session
-            if !session.start() {
-                finish(
-                    callbackURL: nil,
-                    error: AuthError.browserPresentationFailed("The system refused to start the browser authentication session.")
-                )
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                self?.cancelActiveSession()
             }
         }
+    }
+
+    private func cancelActiveSession() {
+        guard let continuation else { return }
+        self.continuation = nil
+        session?.cancel()
+        session = nil
+        continuation.resume(throwing: AuthError.cancelled)
     }
 
     private func finish(callbackURL: URL?, error: (any Error)?) {

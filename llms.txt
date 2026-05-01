@@ -52,30 +52,30 @@ Swift 6 strict concurrency is enabled; `ExistentialAny` and `InferIsolatedConfor
 
 ### Codex chat (text + multi-modal)
 
-- [Sources/CodingPlanCodex/OpenAICodexClient.swift](./Sources/CodingPlanCodex/OpenAICodexClient.swift): three response APIs against `/codex/responses`:
+- [Sources/CodingPlanCodex/Clients/OpenAICodexClient.swift](./Sources/CodingPlanCodex/Clients/OpenAICodexClient.swift): three response APIs against `/codex/responses`:
   - `createTextResponse(prompt:instructions:model:credentials:)` — buffered `OpenAICodexResponse`.
   - `streamTextResponse(prompt:instructions:model:credentials:)` — `AsyncThrowingStream<String>` of SSE text deltas via `URLSession.bytes(for:)`.
   - `streamResponse(prompt:instructions:model:credentials:tools:)` — `AsyncThrowingStream<CodexStreamPart>` covering text deltas plus the `image_generation` tool's lifecycle events (started / generating / keepalive / partial / completed).
   Plus `compactResponse(body:credentials:)` and `summarizeMemories(body:credentials:)` for the agent loop.
-- [Sources/CodingPlanCodex/CodexStreamPart.swift](./Sources/CodingPlanCodex/CodexStreamPart.swift): `CodexStreamPart` (`.textDelta` / `.imageEvent`), `CodexImageEvent`, and `CodexImage` (decoded PNG bytes).
-- [Sources/CodingPlanCodex/CodexTool.swift](./Sources/CodingPlanCodex/CodexTool.swift): `CodexTool.imageGeneration(outputFormat:partialImages:)` and `.imageGenerationPNG` convenience.
+- [Sources/CodingPlanCodex/Core/CodexStreamPart.swift](./Sources/CodingPlanCodex/Core/CodexStreamPart.swift): `CodexStreamPart` (`.textDelta` / `.imageEvent`), `CodexImageEvent`, and `CodexImage` (decoded PNG bytes).
+- [Sources/CodingPlanCodex/Core/CodexTool.swift](./Sources/CodingPlanCodex/Core/CodexTool.swift): `CodexTool.imageGeneration(outputFormat:partialImages:)` and `.imageGenerationPNG` convenience.
 
 ### Usage / billing
 
-- [Sources/CodingPlanCodex/OpenAICodexUsageClient.swift](./Sources/CodingPlanCodex/OpenAICodexUsageClient.swift): `fetchRateLimits(credentials:)` returns the plan's primary + secondary rolling windows and credit balance (`CodexRateLimitsResponse`). Also `sendAddCreditsNudgeEmail(creditType:credentials:)` for the "low credits" / "usage limit reached" reminder email.
+- [Sources/CodingPlanCodex/Clients/OpenAICodexUsageClient.swift](./Sources/CodingPlanCodex/Clients/OpenAICodexUsageClient.swift): `fetchRateLimits(credentials:)` returns the plan's primary + secondary rolling windows and credit balance (`CodexRateLimitsResponse`). Also `sendAddCreditsNudgeEmail(creditType:credentials:)` for the "low credits" / "usage limit reached" reminder email.
 
 ### Cloud tasks + environments + models + safety
 
-- [Sources/CodingPlanCodex/OpenAICodexEnvironmentsClient.swift](./Sources/CodingPlanCodex/OpenAICodexEnvironmentsClient.swift): `listEnvironments(...)` (all and per-repo) and `fetchConfigRequirements(...)` for the workspace-managed setup file.
-- [Sources/CodingPlanCodex/OpenAICodexModelsClient.swift](./Sources/CodingPlanCodex/OpenAICodexModelsClient.swift): `listModels(clientVersion:credentials:)` against `/codex/models`. The backend gates by SemVer client version — pass a recent Codex CLI version (~`0.150.0`), not the host app's version.
-- [Sources/CodingPlanCodex/OpenAICodexTasksClient.swift](./Sources/CodingPlanCodex/OpenAICodexTasksClient.swift): `listTasks` (paginated), `getTask`, `getSiblingTurns`, `createTask`. Rich shapes are passed through as `JSONValue`.
-- [Sources/CodingPlanCodex/OpenAICodexSafetyClient.swift](./Sources/CodingPlanCodex/OpenAICodexSafetyClient.swift): ARC monitor `evaluate(body:auth:)`. `auth` is dual-mode — plan credentials or a static `CODEX_ARC_MONITOR_TOKEN` Bearer.
+- [Sources/CodingPlanCodex/Clients/OpenAICodexEnvironmentsClient.swift](./Sources/CodingPlanCodex/Clients/OpenAICodexEnvironmentsClient.swift): `listEnvironments(...)` (all and per-repo) and `fetchConfigRequirements(...)` for the workspace-managed setup file.
+- [Sources/CodingPlanCodex/Clients/OpenAICodexModelsClient.swift](./Sources/CodingPlanCodex/Clients/OpenAICodexModelsClient.swift): `listModels(clientVersion:credentials:)` against `/codex/models`. The backend gates by SemVer client version — pass a recent Codex CLI version (~`0.150.0`), not the host app's version.
+- [Sources/CodingPlanCodex/Clients/OpenAICodexTasksClient.swift](./Sources/CodingPlanCodex/Clients/OpenAICodexTasksClient.swift): `listTasks` (paginated), `getTask`, `getSiblingTurns`, `createTask`. Rich shapes are passed through as `JSONValue`.
+- [Sources/CodingPlanCodex/Clients/OpenAICodexSafetyClient.swift](./Sources/CodingPlanCodex/Clients/OpenAICodexSafetyClient.swift): ARC monitor `evaluate(body:auth:)`. `auth` is dual-mode — plan credentials or a static `CODEX_ARC_MONITOR_TOKEN` Bearer.
 
 ### Shared
 
-- [Sources/CodingPlanCodex/OpenAIBackend.swift](./Sources/CodingPlanCodex/OpenAIBackend.swift): shared `chatgpt.com/backend-api` base URL + `codex_cli_rs` originator constants.
-- [Sources/CodingPlanCodex/CodexError.swift](./Sources/CodingPlanCodex/CodexError.swift): structured errors: `.missingAccountId`, `.backendError(statusCode: Int?, message: String)` (status nil for SSE-event failures with HTTP 200), `.invalidResponse`.
-- [Sources/CodingPlanCodex/JSONValue.swift](./Sources/CodingPlanCodex/JSONValue.swift): `Sendable + Codable + Equatable` JSON passthrough used by the deeper / volatile endpoint shapes (`compactResponse`, tasks, safety body). Carries a `decode<T: Decodable>` convenience for callers who want to project to their own model.
+- [Sources/CodingPlanCodex/Clients/OpenAIBackend.swift](./Sources/CodingPlanCodex/Clients/OpenAIBackend.swift): shared `chatgpt.com/backend-api` base URL + `codex_cli_rs` originator constants.
+- [Sources/CodingPlanCodex/Core/CodexError.swift](./Sources/CodingPlanCodex/Core/CodexError.swift): structured errors: `.missingAccountId`, `.backendError(statusCode: Int?, message: String)` (status nil for SSE-event failures with HTTP 200), `.invalidResponse`.
+- [Sources/CodingPlanCodex/Core/JSONValue.swift](./Sources/CodingPlanCodex/Core/JSONValue.swift): `Sendable + Codable + Equatable` JSON passthrough used by the deeper / volatile endpoint shapes (`compactResponse`, tasks, safety body). Carries a `decode<T: Decodable>` convenience for callers who want to project to their own model.
 
 ## Tests
 
