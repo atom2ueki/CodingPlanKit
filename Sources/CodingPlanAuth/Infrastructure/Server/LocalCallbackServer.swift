@@ -16,7 +16,7 @@ struct CallbackParameters: Sendable, Equatable {
 }
 
 private final class WebServerBox: @unchecked Sendable {
-    // Reason: SwiftWebServer 0.1.0 does not yet declare itself Sendable.
+    // Reason: SwiftWebServer 0.2.0 still does not declare itself Sendable.
     // The instance is only ever touched from MainActor below.
     let server: SwiftWebServer
 

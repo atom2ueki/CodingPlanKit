@@ -9,11 +9,15 @@ import Foundation
 /// each provider you support, then drive the OAuth flow through this actor:
 ///
 /// ```swift
-/// let service = AuthService(storage: try KeychainTokenStorage())
-/// await service.register(OpenAIAuthProvider(callbackScheme: "myapp"))
-/// let session = try await service.beginLogin(providerId: "openai")
-/// // ... present session.authURL in a browser, receive callback URL ...
-/// let creds = try await service.completeLogin(session: session, with: callbackURL)
+/// do {
+///     let service = AuthService(storage: try KeychainTokenStorage())
+///     await service.register(OpenAIAuthProvider(callbackScheme: "myapp"))
+///     let session = try await service.beginLogin(providerId: "openai")
+///     // ... present session.authURL in a browser, receive callback URL ...
+///     let creds = try await service.completeLogin(session: session, with: callbackURL)
+/// } catch {
+///     // Handle init / login failure
+/// }
 /// ```
 ///
 /// All mutable state is isolated to the actor. Safe to share across tasks.

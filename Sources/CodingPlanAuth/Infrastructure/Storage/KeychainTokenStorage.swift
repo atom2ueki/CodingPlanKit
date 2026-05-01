@@ -22,7 +22,12 @@ import Security
 /// ``accessGroup`` on every instance:
 ///
 /// ```swift
-/// let storage = try KeychainTokenStorage(accessGroup: "TEAMID.com.example.shared")
+/// do {
+///     let storage = try KeychainTokenStorage(accessGroup: "TEAMID.com.example.shared")
+///     // Use storage
+/// } catch {
+///     // Handle initialization failure
+/// }
 /// ```
 public actor KeychainTokenStorage: TokenStorage {
     public let servicePrefix: String
