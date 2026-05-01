@@ -3,6 +3,15 @@ import Darwin
 import Testing
 @testable import CodingPlanAuth
 
+// Serialized because every test in this suite owns a real loopback
+// listen socket. Under swift-testing's parallel-by-default execution,
+// four concurrent servers contend on the main run loop and on
+// `SwiftWebServer.connections` (a static dictionary), and the resulting
+// race occasionally leaves one server's listen socket non-accepting —
+// reproducible locally, frequent on virtualized CI runners. Running the
+// tests one at a time eliminates the contention; runtime cost is
+// trivial (the suite still finishes in ~150ms total).
+@Suite(.serialized)
 struct LocalCallbackServerTests {
     @Test
     func portZeroStartsOnResolvedPort() async throws {
