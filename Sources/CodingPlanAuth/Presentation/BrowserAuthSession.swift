@@ -38,6 +38,11 @@ public final class BrowserAuthSession: NSObject {
 
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
+                if Task.isCancelled {
+                    continuation.resume(throwing: AuthError.cancelled)
+                    return
+                }
+
                 self.continuation = continuation
                 let session = ASWebAuthenticationSession(
                     url: url,

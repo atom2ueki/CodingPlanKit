@@ -9,7 +9,7 @@ struct LocalCallbackServerTests {
         // We test the parsing logic indirectly by creating a server and
         // checking it would match the callback path.
         let server = LocalCallbackServer(port: 0, callbackPath: "/auth/callback")
-        // Since NWListener-based servers cannot be unit-tested in the
+        // Since SwiftWebServer-backed servers cannot be fully unit-tested in the
         // Swift Testing runner on macOS due to sandboxing constraints,
         // we verify the configuration is correct.
         #expect(server.callbackPath == "/auth/callback")

@@ -52,8 +52,10 @@ public final class AuthState {
             let creds = try await service.credentials(for: providerId)
             update(credentials: creds)
         } catch {
-            currentCredentials = nil
-            isAuthenticated = false
+            if shouldClearAuthentication(after: error) {
+                currentCredentials = nil
+                isAuthenticated = false
+            }
             setError(error)
         }
     }
@@ -105,6 +107,28 @@ public final class AuthState {
             self.lastError = authError
         } else {
             self.lastError = .networkError(error.localizedDescription)
+        }
+    }
+
+    private func shouldClearAuthentication(after error: any Error) -> Bool {
+        guard let authError = error as? AuthError else { return false }
+        switch authError {
+        case .tokenExchangeFailed(let statusCode, let message):
+            if statusCode == 401 || statusCode == 403 {
+                return true
+            }
+            let normalizedMessage = message.lowercased()
+            return [
+                "invalid_grant",
+                "invalid grant",
+                "invalid_token",
+                "invalid token",
+                "no refresh token",
+            ].contains { normalizedMessage.contains($0) }
+        case .notAuthenticated, .unsupportedProvider:
+            return true
+        default:
+            return false
         }
     }
 }

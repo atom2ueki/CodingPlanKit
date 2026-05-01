@@ -162,11 +162,24 @@ actor LocalCallbackServer {
     private static func resolveListenPort(_ port: UInt16) throws -> UInt16 {
         guard port == 0 else { return port }
 
+        // SwiftWebServer does not expose the assigned ephemeral port before the
+        // redirect URI is built, so this is a best-effort reservation.
         let socketDescriptor = socket(AF_INET, SOCK_STREAM, 0)
         guard socketDescriptor >= 0 else {
             throw AuthError.callbackServerError("Could not create socket to reserve callback port")
         }
         defer { close(socketDescriptor) }
+
+        var reuseAddress = 1
+        guard setsockopt(
+            socketDescriptor,
+            SOL_SOCKET,
+            SO_REUSEADDR,
+            &reuseAddress,
+            socklen_t(MemoryLayout.size(ofValue: reuseAddress))
+        ) == 0 else {
+            throw AuthError.callbackServerError("Could not configure callback port socket")
+        }
 
         var address = sockaddr_in()
         address.sin_family = sa_family_t(AF_INET)
