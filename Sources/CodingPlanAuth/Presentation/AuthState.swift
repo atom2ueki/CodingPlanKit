@@ -50,9 +50,9 @@ public final class AuthState {
     public func checkStatus() async {
         do {
             let creds = try await service.credentials(for: providerId)
-            await update(credentials: creds)
+            update(credentials: creds)
         } catch {
-            await setError(error)
+            setError(error)
         }
     }
 
@@ -72,9 +72,9 @@ public final class AuthState {
                 session: session,
                 with: callbackURL
             )
-            await update(credentials: creds)
+            update(credentials: creds)
         } catch {
-            await setError(error)
+            setError(error)
         }
     }
 
@@ -84,25 +84,25 @@ public final class AuthState {
         defer { isLoading = false }
         do {
             try await service.logout(providerId: providerId)
-            await update(credentials: nil)
+            update(credentials: nil)
         } catch {
-            await setError(error)
+            setError(error)
         }
     }
 
     // MARK: - Private
 
-    private func update(credentials: Credentials?) async {
+    private func update(credentials: Credentials?) {
         self.currentCredentials = credentials
         self.isAuthenticated = credentials != nil
         self.lastError = nil
     }
 
-    private func setError(_ error: any Error) async {
+    private func setError(_ error: any Error) {
         if let authError = error as? AuthError {
             self.lastError = authError
         } else {
-            self.lastError = AuthError.unknown
+            self.lastError = .networkError(error.localizedDescription)
         }
     }
 }

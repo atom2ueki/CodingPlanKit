@@ -72,9 +72,9 @@ public actor OAuth2PKCEFlow {
     public func beginLogin() async throws -> any LoginSession {
         let pkce = PKCE.generate()
         let state = randomState()
-        let configuredPort = redirectPort(from: config.redirectURI)
-        let candidate = (configuredPort ?? 0) > 0 ? configuredPort! : defaultPort
-        let serverPort: UInt16 = candidate
+        let serverPort = redirectPort(from: config.redirectURI)
+            .flatMap { $0 > 0 ? $0 : nil }
+            ?? defaultPort
 
         let redirectBaseURL: String? = callbackScheme.map { "\($0)://auth/callback" }
 
@@ -107,7 +107,6 @@ public actor OAuth2PKCEFlow {
             state: state,
             pkceVerifier: pkce.verifier,
             redirectURI: redirectURI,
-            serverTask: serverTask,
             server: server,
             clientId: config.clientId,
             tokenEndpoint: config.tokenEndpoint,

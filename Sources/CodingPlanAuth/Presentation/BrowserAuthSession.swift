@@ -47,11 +47,7 @@ public final class BrowserAuthSession: NSObject {
                 }
             }
             session.prefersEphemeralWebBrowserSession = false
-            #if os(iOS)
             session.presentationContextProvider = self
-            #elseif os(macOS)
-            session.presentationContextProvider = self
-            #endif
             self.session = session
             if !session.start() {
                 finish(
@@ -86,7 +82,7 @@ public final class BrowserAuthSession: NSObject {
 
 #if os(iOS)
 extension BrowserAuthSession: ASWebAuthenticationPresentationContextProviding {
-    public func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+    public func presentationAnchor(for _: ASWebAuthenticationSession) -> ASPresentationAnchor {
         let scene = UIApplication.shared.connectedScenes
             .first { $0.activationState == .foregroundActive } as? UIWindowScene
         return scene?.windows.first { $0.isKeyWindow } ?? UIWindow()
@@ -94,7 +90,7 @@ extension BrowserAuthSession: ASWebAuthenticationPresentationContextProviding {
 }
 #elseif os(macOS)
 extension BrowserAuthSession: ASWebAuthenticationPresentationContextProviding {
-    public func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+    public func presentationAnchor(for _: ASWebAuthenticationSession) -> ASPresentationAnchor {
         ASPresentationAnchor()
     }
 }

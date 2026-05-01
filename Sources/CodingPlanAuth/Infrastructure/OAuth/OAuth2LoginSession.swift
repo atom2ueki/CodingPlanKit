@@ -13,7 +13,6 @@ actor OAuth2LoginSession: LoginSession {
     private let state: String
     private let pkceVerifier: String
     private let redirectURI: String
-    private let serverTask: Task<CallbackParameters, any Error>
     private let server: LocalCallbackServer
     private let clientId: String
     private let tokenEndpoint: URL
@@ -26,7 +25,6 @@ actor OAuth2LoginSession: LoginSession {
         state: String,
         pkceVerifier: String,
         redirectURI: String,
-        serverTask: Task<CallbackParameters, any Error>,
         server: LocalCallbackServer,
         clientId: String,
         tokenEndpoint: URL,
@@ -38,7 +36,6 @@ actor OAuth2LoginSession: LoginSession {
         self.state = state
         self.pkceVerifier = pkceVerifier
         self.redirectURI = redirectURI
-        self.serverTask = serverTask
         self.server = server
         self.clientId = clientId
         self.tokenEndpoint = tokenEndpoint

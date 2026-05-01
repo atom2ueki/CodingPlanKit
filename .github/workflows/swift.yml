@@ -5,15 +5,103 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
-  test:
-    name: Build & Test (macOS)
+  spm:
+    name: SwiftPM (macOS)
     runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
-      - name: Show Swift version
-        run: swift --version
-      - name: Build
-        run: swift build -v
+
+      - name: Show toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+
+      - name: Cache SwiftPM build
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+          key: ${{ runner.os }}-spm-${{ hashFiles('Package.resolved', 'Package.swift') }}
+          restore-keys: ${{ runner.os }}-spm-
+
+      - name: Resolve dependencies
+        run: swift package resolve
+
+      - name: Build (warnings as errors)
+        run: swift build -v -Xswiftc -warnings-as-errors
+
       - name: Test
-        run: swift test -v
+        run: swift test -v --parallel
+
+  ios-build:
+    name: Build for iOS Simulator
+    runs-on: macos-15
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        scheme: [CodingPlanAuth, CodingPlanCodex]
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      SCHEME: ${{ matrix.scheme }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: xcodebuild -version
+
+      - name: Build for iOS Simulator
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -scheme "$SCHEME" \
+            -destination 'generic/platform=iOS Simulator' \
+            -skipPackagePluginValidation \
+            -derivedDataPath .derivedData \
+            build
+
+  docc:
+    name: Build DocC archives
+    runs-on: macos-15
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache SwiftPM build
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            ~/Library/Caches/org.swift.swiftpm
+          key: ${{ runner.os }}-docc-${{ hashFiles('Package.resolved', 'Package.swift') }}
+          restore-keys: ${{ runner.os }}-docc-
+
+      - name: Generate CodingPlanAuth docs
+        run: |
+          swift package --allow-writing-to-directory ./docs generate-documentation \
+            --target CodingPlanAuth \
+            --output-path ./docs/CodingPlanAuth \
+            --disable-indexing
+        continue-on-error: true
+
+      - name: Generate CodingPlanCodex docs
+        run: |
+          swift package --allow-writing-to-directory ./docs generate-documentation \
+            --target CodingPlanCodex \
+            --output-path ./docs/CodingPlanCodex \
+            --disable-indexing
+        continue-on-error: true

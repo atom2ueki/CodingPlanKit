@@ -9,8 +9,7 @@ struct RecordedHTTPRequest: Sendable, Equatable {
 }
 
 actor MockHTTPClient: HTTPClient {
-    var responses: [URL: (data: Data, statusCode: Int)] = [:]
-    var requestedURLs: [URL] = []
+    private var responses: [URL: (data: Data, statusCode: Int)] = [:]
     private var requests: [RecordedHTTPRequest] = []
 
     func setResponse(for url: URL, data: Data, statusCode: Int = 200) {
@@ -22,7 +21,6 @@ actor MockHTTPClient: HTTPClient {
     }
 
     func send(_ request: HTTPRequest) async throws -> HTTPResponse {
-        requestedURLs.append(request.url)
         requests.append(RecordedHTTPRequest(
             url: request.url,
             method: request.method,
