@@ -562,19 +562,29 @@ public struct OpenAICodexClient: Sendable {
     }
 
     private static func sseDataPayloads(from stream: String) -> [String] {
-        stream
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .components(separatedBy: "\n\n")
-            .compactMap { event in
-                let dataLines = event
-                    .split(separator: "\n", omittingEmptySubsequences: false)
-                    .compactMap { line -> String? in
-                        guard line.hasPrefix("data:") else { return nil }
-                        return String(line.dropFirst("data:".count)).trimmingCharacters(in: .whitespaces)
-                    }
-                guard !dataLines.isEmpty else { return nil }
-                return dataLines.joined(separator: "\n")
+        var payloads: [String] = []
+        var current: [String] = []
+
+        func flush() {
+            guard !current.isEmpty else { return }
+            payloads.append(current.joined(separator: "\n"))
+            current.removeAll(keepingCapacity: true)
+        }
+
+        let normalized = stream.replacingOccurrences(of: "\r\n", with: "\n")
+        for line in normalized.split(separator: "\n", omittingEmptySubsequences: false) {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty || trimmed.hasPrefix("event:") {
+                flush()
+            } else if trimmed.hasPrefix("data:") {
+                current.append(
+                    String(trimmed.dropFirst("data:".count))
+                        .trimmingCharacters(in: .whitespaces)
+                )
             }
+        }
+        flush()
+        return payloads
     }
 
     private static func backendErrorMessage(from data: Data) -> String {

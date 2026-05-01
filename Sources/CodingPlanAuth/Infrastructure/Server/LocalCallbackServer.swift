@@ -1,6 +1,7 @@
 // LocalCallbackServer.swift
 // CodingPlanAuth
 
+import Darwin
 import Foundation
 import SwiftWebServer
 
@@ -51,6 +52,16 @@ actor LocalCallbackServer {
     func start() async throws -> CallbackParameters {
         try await withCheckedThrowingContinuation { continuation in
             self.continuation = continuation
+            let listenPort: UInt16
+            do {
+                listenPort = try Self.resolveListenPort(port)
+            } catch {
+                let authError = error as? AuthError ?? .callbackServerError(error.localizedDescription)
+                self.startupError = authError
+                continuation.resume(throwing: authError)
+                return
+            }
+
             let server = WebServerBox(SwiftWebServer())
             self.server = server
 
@@ -86,7 +97,6 @@ actor LocalCallbackServer {
                 Task { await target?.resume(with: params) }
             }
 
-            let listenPort = self.port
             Task { @MainActor in
                 server.server.listen(UInt(listenPort)) { }
                 let result = Self.startupResult(from: server.server.status)
@@ -147,6 +157,46 @@ actor LocalCallbackServer {
         case .starting:
             return .pending
         }
+    }
+
+    private static func resolveListenPort(_ port: UInt16) throws -> UInt16 {
+        guard port == 0 else { return port }
+
+        let socketDescriptor = socket(AF_INET, SOCK_STREAM, 0)
+        guard socketDescriptor >= 0 else {
+            throw AuthError.callbackServerError("Could not create socket to reserve callback port")
+        }
+        defer { close(socketDescriptor) }
+
+        var address = sockaddr_in()
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_addr.s_addr = INADDR_ANY
+        address.sin_port = 0
+
+        let bindResult = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                bind(socketDescriptor, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        guard bindResult == 0 else {
+            throw AuthError.callbackServerError("Could not reserve callback port")
+        }
+
+        var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+        let nameResult = withUnsafeMutablePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                getsockname(socketDescriptor, $0, &length)
+            }
+        }
+        guard nameResult == 0 else {
+            throw AuthError.callbackServerError("Could not read reserved callback port")
+        }
+
+        let reservedPort = UInt16(bigEndian: address.sin_port)
+        guard reservedPort > 0 else {
+            throw AuthError.callbackServerError("Reserved callback port was invalid")
+        }
+        return reservedPort
     }
 
     private func finishStartup(with result: StartupResult) {

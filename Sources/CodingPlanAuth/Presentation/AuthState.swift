@@ -52,6 +52,8 @@ public final class AuthState {
             let creds = try await service.credentials(for: providerId)
             update(credentials: creds)
         } catch {
+            currentCredentials = nil
+            isAuthenticated = false
             setError(error)
         }
     }
