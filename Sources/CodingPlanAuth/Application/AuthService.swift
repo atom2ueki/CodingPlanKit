@@ -9,11 +9,15 @@ import Foundation
 /// each provider you support, then drive the OAuth flow through this actor:
 ///
 /// ```swift
-/// let service = AuthService(storage: KeychainTokenStorage())
-/// await service.register(OpenAIAuthProvider(callbackScheme: "myapp"))
-/// let session = try await service.beginLogin(providerId: "openai")
-/// // ... present session.authURL in a browser, receive callback URL ...
-/// let creds = try await service.completeLogin(session: session, with: callbackURL)
+/// do {
+///     let service = AuthService(storage: try KeychainTokenStorage())
+///     await service.register(OpenAIAuthProvider(callbackScheme: "myapp"))
+///     let session = try await service.beginLogin(providerId: "openai")
+///     // ... present session.authURL in a browser, receive callback URL ...
+///     let creds = try await service.completeLogin(session: session, with: callbackURL)
+/// } catch {
+///     // Handle init / login failure
+/// }
 /// ```
 ///
 /// All mutable state is isolated to the actor. Safe to share across tasks.
@@ -22,9 +26,11 @@ public actor AuthService {
     private var providers: [String: any AuthProvider] = [:]
 
     /// Create a new service with the given storage backend.
-    /// - Parameter storage: Where credentials are persisted.
-    ///   Defaults to ``KeychainTokenStorage``.
-    public init(storage: any TokenStorage = KeychainTokenStorage()) {
+    /// - Parameter storage: Where credentials are persisted. There is no
+    ///   default — callers must construct storage explicitly so a CLI or
+    ///   test host without a bundle identifier can't silently end up with
+    ///   a globally-shared keychain service name.
+    public init(storage: any TokenStorage) {
         self.storage = storage
     }
 

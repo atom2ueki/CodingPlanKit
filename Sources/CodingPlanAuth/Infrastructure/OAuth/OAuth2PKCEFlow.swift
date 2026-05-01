@@ -81,7 +81,8 @@ public actor OAuth2PKCEFlow {
         let server = LocalCallbackServer(
             port: serverPort,
             callbackPath: callbackPath,
-            redirectBaseURL: redirectBaseURL
+            redirectBaseURL: redirectBaseURL,
+            expectedState: state
         )
         let serverTask = Task { try await server.start() }
         let actualPort: UInt16

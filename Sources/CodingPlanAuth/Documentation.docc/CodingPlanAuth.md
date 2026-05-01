@@ -25,10 +25,19 @@ import CodingPlanAuth
 
 @MainActor @Observable
 final class SignIn {
-    private let service = AuthService(storage: KeychainTokenStorage())
+    private let service: AuthService
     private let provider = OpenAIAuthProvider(callbackScheme: "myapp")
     private let browser = BrowserAuthSession()
     var credentials: Credentials?
+
+    init() throws {
+        // KeychainTokenStorage() throws when there's no servicePrefix
+        // and no Bundle.main.bundleIdentifier (CLI/test contexts). In a
+        // normal iOS/macOS app target the bundle id is always present
+        // and this never throws — but propagate the error rather than
+        // crashing so misconfigured hosts surface a clear failure.
+        service = AuthService(storage: try KeychainTokenStorage())
+    }
 
     func signIn() async throws {
         await service.register(provider)
