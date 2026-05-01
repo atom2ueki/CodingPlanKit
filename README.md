@@ -59,10 +59,19 @@ import CodingPlanAuth
 @MainActor
 @Observable
 final class SignIn {
-    private let service = AuthService(storage: KeychainTokenStorage())
+    private let service: AuthService
     private let provider = OpenAIAuthProvider(callbackScheme: "myapp")
     private let browser = BrowserAuthSession()
     var credentials: Credentials?
+
+    init() throws {
+        // KeychainTokenStorage() throws when there's no servicePrefix and
+        // no Bundle.main.bundleIdentifier (CLI/test contexts). In a normal
+        // iOS/macOS app target the bundle id is always present and this
+        // never throws — propagating rather than crashing keeps misconfigured
+        // hosts (e.g. CLI tools without an explicit servicePrefix) loud.
+        service = AuthService(storage: try KeychainTokenStorage())
+    }
 
     func signIn() async throws {
         await service.register(provider)
@@ -104,6 +113,19 @@ for try await delta in codex.streamTextResponse(prompt: "...", credentials: cred
 - DocC catalogs:
   [`CodingPlanAuth`](./Sources/CodingPlanAuth/Documentation.docc/CodingPlanAuth.md),
   [`CodingPlanCodex`](./Sources/CodingPlanCodex/Documentation.docc/CodingPlanCodex.md).
+
+## Acknowledgements
+
+### Built on
+
+- [SwiftWebServer](https://github.com/atom2ueki/SwiftWebServer) — local loopback HTTP listener used for the OAuth callback during sign-in.
+
+### Inspired by
+
+- [openai/codex](https://github.com/openai/codex)
+- [sugarforever/rn-ai-kit](https://github.com/sugarforever/rn-ai-kit)
+- [Vercel AI SDK](https://github.com/vercel/ai)
+- [badlogic/pi-mono](https://github.com/badlogic/pi-mono)
 
 ## License
 

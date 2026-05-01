@@ -40,7 +40,7 @@ Swift 6 strict concurrency is enabled; `ExistentialAny` and `InferIsolatedConfor
 ## HTTP and storage
 
 - [Sources/CodingPlanAuth/Infrastructure/HTTP/HTTPClient.swift](./Sources/CodingPlanAuth/Infrastructure/HTTP/HTTPClient.swift): `HTTPClient` protocol + `URLSessionHTTPClient` + `HTTPMethod` / `HTTPRequest` / `HTTPResponse`. Buffered only — streaming lives in `CodingPlanCodex` directly on `URLSession.bytes(for:)`.
-- [Sources/CodingPlanAuth/Infrastructure/Storage/KeychainTokenStorage.swift](./Sources/CodingPlanAuth/Infrastructure/Storage/KeychainTokenStorage.swift): default `TokenStorage` adapter. Defaults service prefix to `Bundle.main.bundleIdentifier`. Optional `accessGroup:` parameter for sharing credentials across an app + extension via Keychain Access Group.
+- [Sources/CodingPlanAuth/Infrastructure/Storage/KeychainTokenStorage.swift](./Sources/CodingPlanAuth/Infrastructure/Storage/KeychainTokenStorage.swift): default `TokenStorage` adapter. `init(servicePrefix:accessGroup:)` is throwing — defaults service prefix to `Bundle.main.bundleIdentifier`, throws `AuthError.storageError` when both `servicePrefix` and the bundle id are nil so CLI / test contexts can't silently end up sharing a global keychain service name. Optional `accessGroup:` parameter for sharing credentials across an app + extension via Keychain Access Group.
 
 ## OpenAI provider (auth)
 
