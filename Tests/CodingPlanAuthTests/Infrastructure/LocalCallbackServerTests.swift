@@ -137,8 +137,6 @@ struct LocalCallbackServerTests {
     private func callbackGET(port: UInt16, query: String) async throws -> (status: Int, body: Data) {
         var request = URLRequest(url: URL(string: "http://127.0.0.1:\(port)/auth/callback?\(query)")!)
         request.httpMethod = "GET"
-        // Don't follow redirects — the redirect path is exercised
-        // separately and would obscure the status code we want here.
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw AuthError.callbackServerError("Non-HTTP response from callback server")
