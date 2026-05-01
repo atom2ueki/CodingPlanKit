@@ -15,32 +15,25 @@ struct CallbackParameters: Sendable, Equatable {
     }
 }
 
-private final class WebServerBox: @unchecked Sendable {
-    // Reason: SwiftWebServer 0.2.0 still does not declare itself Sendable.
-    // The instance is only ever touched from MainActor below.
-    let server: SwiftWebServer
-
-    init(_ server: SwiftWebServer) {
-        self.server = server
-    }
-}
-
 actor LocalCallbackServer {
     private static let ephemeralPortStartupAttempts = 5
 
     nonisolated let port: UInt16
     nonisolated let callbackPath: String
 
-    private let responseHTML: String
-    private let redirectBaseURL: String?
+    // Configuration is immutable after init and read from the @MainActor
+    // helper that constructs the SwiftWebServer instance, so it lives
+    // outside the actor's isolation.
+    nonisolated private let responseHTML: String
+    nonisolated private let redirectBaseURL: String?
     /// When set, requests whose `state` query parameter doesn't match this
     /// value are rejected with HTTP 400 *without* consuming the single-shot
     /// resume. The legitimate browser callback (which carries the genuine
     /// state) can still arrive afterwards and complete the flow.
     /// State is OAuth's CSRF token (RFC 6749 §10.12) and is unguessable to
     /// any off-path attacker.
-    private let expectedState: String?
-    private var server: WebServerBox?
+    nonisolated private let expectedState: String?
+    private var server: SwiftWebServer?
     private var startedPort: UInt16?
     private var startupError: AuthError?
     private var continuation: CheckedContinuation<CallbackParameters, any Error>?
@@ -91,7 +84,7 @@ actor LocalCallbackServer {
         startupError = nil
         if let currentServer {
             await MainActor.run {
-                currentServer.server.close()
+                currentServer.close()
             }
         }
     }
@@ -137,15 +130,15 @@ actor LocalCallbackServer {
                 return
             }
 
-            let server = makeServer()
+            let server = await makeServer()
             self.server = server
 
             let result = await MainActor.run {
                 // Bind to loopback only (RFC 8252 §7.3). "localhost" gives us
                 // dual-stack 127.0.0.1 + ::1 in one call so the system browser
                 // can reach the callback regardless of which family it picks.
-                server.server.listen(UInt(listenPort), host: "localhost") { }
-                return Self.startupResult(from: server.server.status)
+                server.listen(UInt(listenPort), host: "localhost") { }
+                return Self.startupResult(from: server.status)
             }
 
             if case .failure(let error) = result,
@@ -154,7 +147,7 @@ actor LocalCallbackServer {
                Self.isResolvedPortBindFailure(error) {
                 self.server = nil
                 await MainActor.run {
-                    server.server.close()
+                    server.close()
                 }
                 continue
             }
@@ -164,16 +157,25 @@ actor LocalCallbackServer {
         }
     }
 
-    private func makeServer() -> WebServerBox {
-        let server = WebServerBox(SwiftWebServer())
+    @MainActor
+    private func makeServer() -> SwiftWebServer {
+        let server = SwiftWebServer()
 
-        // Capture state into local constants so the handler closure doesn't
-        // synchronously reach into the actor.
+        // Capture state into local constants so the route handler closure
+        // doesn't synchronously reach into the actor's isolated storage.
+        // (These properties are `nonisolated` immutable lets, so the read
+        // is fine from the @MainActor context; capturing locally still
+        // makes the closure's intent explicit.)
         let redirectBaseURL = self.redirectBaseURL
         let responseHTML = self.responseHTML
         let expectedState = self.expectedState
 
-        server.server.get(callbackPath) { [weak self] request, response in
+        // The closure is registered on @MainActor (server.get) but invoked on
+        // SwiftWebServer's per-connection background dispatch queue. Mark it
+        // @Sendable so its inferred isolation is non-isolated; without this
+        // the runtime traps with "BUG IN CLIENT OF libdispatch" on the first
+        // request because the closure inherits @MainActor from the call site.
+        server.get(callbackPath) { @Sendable [weak self] request, response in
             let query = request.queryParameters
             guard let code = query["code"] else {
                 response.status(.badRequest, error: "Missing authorization code")
@@ -289,7 +291,7 @@ actor LocalCallbackServer {
             startedPort = nil
             if let currentServer {
                 Task { @MainActor in
-                    currentServer.server.close()
+                    currentServer.close()
                 }
             }
             startupCont?.resume(throwing: error)
@@ -309,7 +311,7 @@ actor LocalCallbackServer {
         startupError = nil
         if let currentServer {
             await MainActor.run {
-                currentServer.server.close()
+                currentServer.close()
             }
         }
         cont.resume(returning: params)
