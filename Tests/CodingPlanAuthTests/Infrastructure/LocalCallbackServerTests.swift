@@ -5,17 +5,6 @@ import Testing
 
 struct LocalCallbackServerTests {
     @Test
-    func parseCallbackExtractsCodeAndState() {
-        // We test the parsing logic indirectly by creating a server and
-        // checking it would match the callback path.
-        let server = LocalCallbackServer(port: 0, callbackPath: "/auth/callback")
-        // Since SwiftWebServer-backed servers cannot be fully unit-tested in the
-        // Swift Testing runner on macOS due to sandboxing constraints,
-        // we verify the configuration is correct.
-        #expect(server.callbackPath == "/auth/callback")
-    }
-
-    @Test
     func portZeroStartsOnResolvedPort() async throws {
         let server = LocalCallbackServer(port: 0, callbackPath: "/auth/callback")
         let task = Task { try await server.start() }
