@@ -1,0 +1,18 @@
+{
+  "name": "coding-plan-kit",
+  "description": "Claude Code marketplace for the CodingPlanKit Swift package — ships an integration skill so AI coding agents can wire ChatGPT plan-bound auth and Codex API calls into iOS / macOS apps without reading the source.",
+  "owner": {
+    "name": "Tony Li",
+    "url": "https://github.com/atom2ueki"
+  },
+  "plugins": [
+    {
+      "name": "coding-plan-kit",
+      "source": ".",
+      "description": "Integrate CodingPlanKit (Swift package) into iOS / macOS apps — OAuth + PKCE + Keychain auth and ChatGPT plan-bound Codex API clients.",
+      "version": "0.1.0",
+      "category": "Swift / iOS",
+      "tags": ["swift", "ios", "macos", "oauth", "pkce", "chatgpt", "openai", "codex"]
+    }
+  ]
+}

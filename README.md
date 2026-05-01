@@ -1,37 +1,21 @@
-# CodingPlanKit
+<p align="center">
+  <img src=".assets/banner.svg" alt="CodingPlanKit — OAuth + plan-bound Codex API clients for ChatGPT, in Swift" width="100%">
+</p>
 
-Umbrella Swift package for working with AI coding-plan accounts on iOS 17+ /
-macOS 14+. Sign users in with OAuth 2.0 + PKCE, persist credentials in the
-Keychain, and call plan-bound APIs that charge the user's plan instead of
-your API key — no per-token billing.
+<p align="center">
+  <a href="https://github.com/atom2ueki/CodingPlanKit/actions/workflows/swift.yml"><img src="https://github.com/atom2ueki/CodingPlanKit/actions/workflows/swift.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://swift.org"><img src="https://img.shields.io/badge/Swift-6.1-F05138?logo=swift&logoColor=white" alt="Swift 6.1"></a>
+  <img src="https://img.shields.io/badge/platforms-iOS%2017%2B%20%7C%20macOS%2014%2B-blue" alt="Platforms">
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License"></a>
+</p>
 
-The package ships **two products** (more to come):
-
-| Product | Purpose | Depends on |
-|---|---|---|
-| `CodingPlanAuth` | OAuth + token storage. Pure auth. | `SwiftWebServer` |
-| `CodingPlanCodex` | Plan-bound API clients (Codex chat, usage / quota). | `CodingPlanAuth` |
-
-Pick `CodingPlanAuth` alone if you only need OAuth. Add `CodingPlanCodex`
-when you also want to call the ChatGPT backend.
-
-**`CodingPlanAuth`**
-
-- iOS 17+ / macOS 14+, Swift 6 with strict concurrency
-- OAuth 2.0 + PKCE, Keychain-backed token storage (App Group ready)
-- Pluggable provider registry (Strategy pattern) for adding Anthropic / Google later
-- Generic `OAuth2PKCEFlow` engine — a new provider is `OAuthConfig` + a `OAuth2TokenResponseParser`
-
-**`CodingPlanCodex`**
-
-- Buffered Codex chat (`createTextResponse`) and live streaming
-  (`streamTextResponse` returning `AsyncThrowingStream<String>`) via `URLSession.bytes(for:)`
-- Plan-bound usage / rate-limit snapshot (`OpenAICodexUsageClient.fetchRateLimits`)
-- Structured `CodexError` distinguishing HTTP-status failures from SSE-event failures
+Sign users in to ChatGPT (OAuth 2.0 + PKCE, Keychain-backed) and call the
+Codex backend on the user's plan instead of your API key — no per-token
+billing. Two SwiftPM products — pick `CodingPlanAuth` alone for OAuth, add
+`CodingPlanCodex` when you want plan-bound chat / streaming / image
+generation / usage.
 
 ## Install
-
-In `Package.swift`:
 
 ```swift
 .package(url: "https://github.com/atom2ueki/CodingPlanKit.git", from: "0.1.0"),
@@ -50,7 +34,23 @@ In `Package.swift`:
 For iOS, register a custom URL scheme in `Info.plist` (e.g. `myapp`) so
 `ASWebAuthenticationSession` can return cleanly from the OAuth redirect.
 
-## Quick start (SwiftUI)
+## Install the skill (let your code agent integrate it for you)
+
+CodingPlanKit ships a [Claude Code](https://docs.claude.com/en/docs/claude-code/overview)
+skill so an AI agent in your editor can integrate the SDK without you having
+to read the source. Inside Claude Code:
+
+```
+/plugin marketplace add atom2ueki/CodingPlanKit
+/plugin install coding-plan-kit@coding-plan-kit
+```
+
+After that, prompts like *"add CodingPlanKit auth to this iOS app"* or
+*"stream a Codex response with image generation"* trigger the skill
+automatically. The skill reads from [`llms.txt`](./llms.txt) for the full
+public surface, so it stays in sync with the source.
+
+## Quick start
 
 ```swift
 import SwiftUI
@@ -79,7 +79,7 @@ final class SignIn {
 }
 ```
 
-Once signed in, call plan-bound APIs with `CodingPlanCodex`:
+Then call plan-bound APIs with `CodingPlanCodex`:
 
 ```swift
 import CodingPlanCodex
@@ -92,7 +92,7 @@ let response = try await codex.createTextResponse(
     credentials: credentials
 )
 
-// Or stream deltas as they arrive:
+// Stream deltas:
 for try await delta in codex.streamTextResponse(prompt: "...", credentials: credentials) {
     print(delta, terminator: "")
 }
@@ -100,20 +100,10 @@ for try await delta in codex.streamTextResponse(prompt: "...", credentials: cred
 
 ## Documentation
 
-Full architecture, types, and "how to add a provider" are in the DocC catalogs
-([`CodingPlanAuth`](Sources/CodingPlanAuth/Documentation.docc/CodingPlanAuth.md),
-[`CodingPlanCodex`](Sources/CodingPlanCodex/Documentation.docc/CodingPlanCodex.md))
-and in [`llms.txt`](./llms.txt) for AI agents.
-
-## Testing
-
-```sh
-swift test
-```
-
-Covers OAuth URL building, token-response parsing, refresh behavior, the
-Keychain storage actor, the local callback server (real ports), and the
-Codex / usage clients via injected `HTTPClient` mocks.
+- [`llms.txt`](./llms.txt) — file-by-file index for AI agents and humans.
+- DocC catalogs:
+  [`CodingPlanAuth`](./Sources/CodingPlanAuth/Documentation.docc/CodingPlanAuth.md),
+  [`CodingPlanCodex`](./Sources/CodingPlanCodex/Documentation.docc/CodingPlanCodex.md).
 
 ## License
 
