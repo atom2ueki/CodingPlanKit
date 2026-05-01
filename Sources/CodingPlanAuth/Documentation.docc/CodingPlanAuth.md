@@ -25,7 +25,7 @@ import CodingPlanAuth
 
 @MainActor @Observable
 final class SignIn {
-    private let service = AuthService(storage: KeychainTokenStorage())
+    private let service = AuthService(storage: try! KeychainTokenStorage())
     private let provider = OpenAIAuthProvider(callbackScheme: "myapp")
     private let browser = BrowserAuthSession()
     var credentials: Credentials?

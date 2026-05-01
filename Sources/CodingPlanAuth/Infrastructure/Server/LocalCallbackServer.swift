@@ -33,6 +33,13 @@ actor LocalCallbackServer {
 
     private let responseHTML: String
     private let redirectBaseURL: String?
+    /// When set, requests whose `state` query parameter doesn't match this
+    /// value are rejected with HTTP 400 *without* consuming the single-shot
+    /// resume. The legitimate browser callback (which carries the genuine
+    /// state) can still arrive afterwards and complete the flow.
+    /// State is OAuth's CSRF token (RFC 6749 §10.12) and is unguessable to
+    /// any off-path attacker.
+    private let expectedState: String?
     private var server: WebServerBox?
     private var startedPort: UInt16?
     private var startupError: AuthError?
@@ -43,12 +50,14 @@ actor LocalCallbackServer {
         port: UInt16 = 0,
         callbackPath: String = "/auth/callback",
         responseHTML: String? = nil,
-        redirectBaseURL: String? = nil
+        redirectBaseURL: String? = nil,
+        expectedState: String? = nil
     ) {
         self.port = port
         self.callbackPath = callbackPath
         self.responseHTML = responseHTML ?? LocalCallbackServer.defaultSuccessHTML()
         self.redirectBaseURL = redirectBaseURL
+        self.expectedState = expectedState
     }
 
     func start() async throws -> CallbackParameters {
@@ -132,7 +141,10 @@ actor LocalCallbackServer {
             self.server = server
 
             let result = await MainActor.run {
-                server.server.listen(UInt(listenPort)) { }
+                // Bind to loopback only (RFC 8252 §7.3). "localhost" gives us
+                // dual-stack 127.0.0.1 + ::1 in one call so the system browser
+                // can reach the callback regardless of which family it picks.
+                server.server.listen(UInt(listenPort), host: "localhost") { }
                 return Self.startupResult(from: server.server.status)
             }
 
@@ -159,11 +171,19 @@ actor LocalCallbackServer {
         // synchronously reach into the actor.
         let redirectBaseURL = self.redirectBaseURL
         let responseHTML = self.responseHTML
+        let expectedState = self.expectedState
 
         server.server.get(callbackPath) { [weak self] request, response in
             let query = request.queryParameters
             guard let code = query["code"] else {
                 response.status(.badRequest, error: "Missing authorization code")
+                return
+            }
+            // Defense in depth: when we know the expected state, refuse
+            // to fire the resume on a mismatch. A LAN-side forged
+            // callback can no longer kill the legitimate browser one.
+            if let expectedState, query["state"] != expectedState {
+                response.status(.badRequest, error: "Invalid state")
                 return
             }
             let params = CallbackParameters(code: code, state: query["state"])
@@ -192,7 +212,10 @@ actor LocalCallbackServer {
 
     private static func isResolvedPortBindFailure(_ error: AuthError) -> Bool {
         guard case .callbackServerError(let message) = error else { return false }
-        return message.hasPrefix("Failed to bind IPv4 socket on port ")
+        // Either family can lose the race after `resolveListenPort`'s
+        // reservation closed — match both so the retry loop fires.
+        return message.hasPrefix("Failed to bind IPv4 socket on port ") ||
+            message.hasPrefix("Failed to bind IPv6 socket on port ")
     }
 
     private static func resolveListenPort(_ port: UInt16) throws -> UInt16 {

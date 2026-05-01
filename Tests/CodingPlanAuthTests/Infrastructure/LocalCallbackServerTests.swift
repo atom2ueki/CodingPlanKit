@@ -43,9 +43,14 @@ struct LocalCallbackServerTests {
             throw AuthError.callbackServerError("Could not create test socket")
         }
 
+        // Bind to loopback (not INADDR_ANY) so we conflict with the
+        // server-under-test which also binds loopback. With SO_REUSEADDR,
+        // an INADDR_ANY reservation does not prevent a more-specific
+        // loopback bind at the same port — the test would no longer
+        // observe a real port conflict.
         var address = sockaddr_in()
         address.sin_family = sa_family_t(AF_INET)
-        address.sin_addr.s_addr = INADDR_ANY
+        address.sin_addr.s_addr = INADDR_LOOPBACK.bigEndian
         address.sin_port = 0
 
         let bindResult = withUnsafePointer(to: &address) { pointer in

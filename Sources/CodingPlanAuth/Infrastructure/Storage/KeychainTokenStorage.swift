@@ -11,16 +11,18 @@ import Security
 /// `com.example.app.openai`). Items are flagged
 /// `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` and never sync to iCloud.
 ///
-/// The default `servicePrefix` is the host app's bundle identifier. Pass an
-/// explicit prefix when the kit is used in a context without a usable bundle
-/// id (unit tests, command-line tools, etc.).
+/// The default `servicePrefix` is the host app's bundle identifier. In contexts
+/// without a usable bundle id (unit tests, CLI tools, app-extension hosts where
+/// `Bundle.main` is the host shell), the initializer throws so the caller is
+/// forced to disambiguate — two CLIs sharing a process bundle would otherwise
+/// silently share each other's credentials.
 ///
 /// To share credentials with widget or other app extensions, configure a
 /// shared Keychain Access Group in your entitlements and pass it as
 /// ``accessGroup`` on every instance:
 ///
 /// ```swift
-/// let storage = KeychainTokenStorage(accessGroup: "TEAMID.com.example.shared")
+/// let storage = try KeychainTokenStorage(accessGroup: "TEAMID.com.example.shared")
 /// ```
 public actor KeychainTokenStorage: TokenStorage {
     public let servicePrefix: String
@@ -30,10 +32,20 @@ public actor KeychainTokenStorage: TokenStorage {
     /// app extensions with the same entitlement can read them.
     public let accessGroup: String?
 
-    public init(servicePrefix: String? = nil, accessGroup: String? = nil) {
-        self.servicePrefix = servicePrefix
-            ?? Bundle.main.bundleIdentifier
-            ?? "com.codingplan.auth"
+    /// - Throws: ``AuthError/storageError(_:)`` when `servicePrefix` is `nil`
+    ///   and `Bundle.main.bundleIdentifier` is also `nil`. Pass an explicit
+    ///   `servicePrefix` from CLI tools, test harnesses, and any other host
+    ///   without a unique bundle identifier.
+    public init(servicePrefix: String? = nil, accessGroup: String? = nil) throws {
+        if let servicePrefix {
+            self.servicePrefix = servicePrefix
+        } else if let bundleId = Bundle.main.bundleIdentifier {
+            self.servicePrefix = bundleId
+        } else {
+            throw AuthError.storageError(
+                "KeychainTokenStorage requires an explicit servicePrefix when Bundle.main has no bundle identifier (CLI / test contexts)."
+            )
+        }
         self.accessGroup = accessGroup
     }
 
