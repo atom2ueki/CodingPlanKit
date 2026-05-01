@@ -38,7 +38,9 @@ public final class BrowserAuthSession: NSObject {
 
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                if Task.isCancelled {
+                do {
+                    try Task.checkCancellation()
+                } catch {
                     continuation.resume(throwing: AuthError.cancelled)
                     return
                 }

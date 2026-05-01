@@ -26,6 +26,8 @@ private final class WebServerBox: @unchecked Sendable {
 }
 
 actor LocalCallbackServer {
+    private static let ephemeralPortStartupAttempts = 5
+
     nonisolated let port: UInt16
     nonisolated let callbackPath: String
 
@@ -52,56 +54,7 @@ actor LocalCallbackServer {
     func start() async throws -> CallbackParameters {
         try await withCheckedThrowingContinuation { continuation in
             self.continuation = continuation
-            let listenPort: UInt16
-            do {
-                listenPort = try Self.resolveListenPort(port)
-            } catch {
-                let authError = error as? AuthError ?? .callbackServerError(error.localizedDescription)
-                self.startupError = authError
-                continuation.resume(throwing: authError)
-                return
-            }
-
-            let server = WebServerBox(SwiftWebServer())
-            self.server = server
-
-            // Capture state into local constants so the handler closure doesn't
-            // synchronously reach into the actor.
-            let redirectBaseURL = self.redirectBaseURL
-            let responseHTML = self.responseHTML
-
-            server.server.get(callbackPath) { [weak self] request, response in
-                let query = request.queryParameters
-                guard let code = query["code"] else {
-                    response.status(.badRequest, error: "Missing authorization code")
-                    return
-                }
-                let params = CallbackParameters(code: code, state: query["state"])
-
-                if let redirectBaseURL {
-                    var components = URLComponents(string: redirectBaseURL)
-                    var items = components?.queryItems ?? []
-                    items.append(URLQueryItem(name: "code", value: code))
-                    if let state = query["state"] {
-                        items.append(URLQueryItem(name: "state", value: state))
-                    }
-                    components?.queryItems = items
-                    response.redirectTemporary(components?.string ?? redirectBaseURL)
-                } else {
-                    response.status(.ok)
-                    response.header(.contentType, "text/html; charset=utf-8")
-                    response.send(responseHTML)
-                }
-
-                let target = self
-                Task { await target?.resume(with: params) }
-            }
-
-            Task { @MainActor in
-                server.server.listen(UInt(listenPort)) { }
-                let result = Self.startupResult(from: server.server.status)
-                Task { await self.finishStartup(with: result) }
-            }
+            Task { await self.startListening() }
         }
     }
 
@@ -159,11 +112,94 @@ actor LocalCallbackServer {
         }
     }
 
+    private func startListening() async {
+        let shouldResolveEphemeralPort = port == 0
+        let maxAttempts = shouldResolveEphemeralPort ? Self.ephemeralPortStartupAttempts : 1
+
+        for attempt in 1...maxAttempts {
+            guard continuation != nil else { return }
+
+            let listenPort: UInt16
+            do {
+                listenPort = try Self.resolveListenPort(port)
+            } catch {
+                let authError = error as? AuthError ?? .callbackServerError(error.localizedDescription)
+                finishStartup(with: .failure(authError))
+                return
+            }
+
+            let server = makeServer()
+            self.server = server
+
+            let result = await MainActor.run {
+                server.server.listen(UInt(listenPort)) { }
+                return Self.startupResult(from: server.server.status)
+            }
+
+            if case .failure(let error) = result,
+               shouldResolveEphemeralPort,
+               attempt < maxAttempts,
+               Self.isResolvedPortBindFailure(error) {
+                self.server = nil
+                await MainActor.run {
+                    server.server.close()
+                }
+                continue
+            }
+
+            finishStartup(with: result)
+            return
+        }
+    }
+
+    private func makeServer() -> WebServerBox {
+        let server = WebServerBox(SwiftWebServer())
+
+        // Capture state into local constants so the handler closure doesn't
+        // synchronously reach into the actor.
+        let redirectBaseURL = self.redirectBaseURL
+        let responseHTML = self.responseHTML
+
+        server.server.get(callbackPath) { [weak self] request, response in
+            let query = request.queryParameters
+            guard let code = query["code"] else {
+                response.status(.badRequest, error: "Missing authorization code")
+                return
+            }
+            let params = CallbackParameters(code: code, state: query["state"])
+
+            if let redirectBaseURL {
+                var components = URLComponents(string: redirectBaseURL)
+                var items = components?.queryItems ?? []
+                items.append(URLQueryItem(name: "code", value: code))
+                if let state = query["state"] {
+                    items.append(URLQueryItem(name: "state", value: state))
+                }
+                components?.queryItems = items
+                response.redirectTemporary(components?.string ?? redirectBaseURL)
+            } else {
+                response.status(.ok)
+                response.header(.contentType, "text/html; charset=utf-8")
+                response.send(responseHTML)
+            }
+
+            let target = self
+            Task { await target?.resume(with: params) }
+        }
+
+        return server
+    }
+
+    private static func isResolvedPortBindFailure(_ error: AuthError) -> Bool {
+        guard case .callbackServerError(let message) = error else { return false }
+        return message.hasPrefix("Failed to bind IPv4 socket on port ")
+    }
+
     private static func resolveListenPort(_ port: UInt16) throws -> UInt16 {
         guard port == 0 else { return port }
 
-        // SwiftWebServer does not expose the assigned ephemeral port before the
-        // redirect URI is built, so this is a best-effort reservation.
+        // SwiftWebServer reports `.running(port: 0)` for OS-assigned ports, so
+        // reserve a candidate port first and retry startup if that race loses.
         let socketDescriptor = socket(AF_INET, SOCK_STREAM, 0)
         guard socketDescriptor >= 0 else {
             throw AuthError.callbackServerError("Could not create socket to reserve callback port")
