@@ -16,6 +16,18 @@ struct LocalCallbackServerTests {
     }
 
     @Test
+    func portZeroStartsOnResolvedPort() async throws {
+        let server = LocalCallbackServer(port: 0, callbackPath: "/auth/callback")
+        let task = Task { try await server.start() }
+
+        let actualPort = try await server.waitUntilStarted()
+        #expect(actualPort > 0)
+
+        await server.stop()
+        _ = try? await task.value
+    }
+
+    @Test
     func reportsBindFailureDuringStartup() async throws {
         let reservation = try reserveLocalPort()
         defer { close(reservation.socket) }
