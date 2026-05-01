@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".assets/banner.svg" alt="CodingPlanKit — OAuth + plan-bound Codex API clients for ChatGPT, in Swift" width="100%">
+  <img src=".assets/banner.png" alt="CodingPlanKit — Swift libraries for user-plan auth and plan-bound AI clients" width="100%">
 </p>
 
 <p align="center">
