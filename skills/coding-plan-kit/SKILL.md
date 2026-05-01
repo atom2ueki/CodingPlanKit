@@ -30,7 +30,7 @@ DocC catalogs are also bundled inside both targets.
 In `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/atom2ueki/CodingPlanKit.git", from: "0.1.0"),
+.package(url: "https://github.com/atom2ueki/CodingPlanKit.git", from: "0.1.1"),
 ```
 
 ```swift
