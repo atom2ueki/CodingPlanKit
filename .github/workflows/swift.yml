@@ -58,7 +58,6 @@ jobs:
         run: xcodebuild -version
 
       - name: Build CodingPlanAuth for iOS Simulator
-        id: build_auth
         run: |
           set -o pipefail
           xcodebuild \
@@ -69,7 +68,7 @@ jobs:
             build
 
       - name: Build CodingPlanCodex for iOS Simulator
-        if: always() && steps.build_auth.conclusion != 'cancelled'
+        if: success() || failure()
         run: |
           set -o pipefail
           xcodebuild \
