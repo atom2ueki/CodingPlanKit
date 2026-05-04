@@ -49,24 +49,30 @@ jobs:
     name: Build for iOS Simulator
     runs-on: macos-15
     timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        scheme: [CodingPlanAuth, CodingPlanCodex]
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
-      SCHEME: ${{ matrix.scheme }}
     steps:
       - uses: actions/checkout@v6
 
       - name: Show toolchain
         run: xcodebuild -version
 
-      - name: Build for iOS Simulator
+      - name: Build CodingPlanAuth for iOS Simulator
         run: |
           set -o pipefail
           xcodebuild \
-            -scheme "$SCHEME" \
+            -scheme CodingPlanAuth \
+            -destination 'generic/platform=iOS Simulator' \
+            -skipPackagePluginValidation \
+            -derivedDataPath .derivedData \
+            build
+
+      - name: Build CodingPlanCodex for iOS Simulator
+        if: success() || failure()
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -scheme CodingPlanCodex \
             -destination 'generic/platform=iOS Simulator' \
             -skipPackagePluginValidation \
             -derivedDataPath .derivedData \
